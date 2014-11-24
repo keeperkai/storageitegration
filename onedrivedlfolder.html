@@ -1,0 +1,18 @@
+<!doctype html>
+<html>
+<head>
+
+</head>
+<body>
+<button onclick='dl();'>downloadfolder</button>
+
+<script>
+function dl(){
+    //$(document).append("<form id='dlfile' action='https://cid-e8fb92ade8af1352.users.storage.live.com/downloadfiles/V1/Zip' method='post'><input type='submit'>submit</input><input type='hidden' name='resIds' value='E8FB92ADE8AF1352!154'></input></form>");
+    document.body.innerHTML += "<form id='dlfile' action='https://cid-e8fb92ade8af1352.users.storage.live.com/downloadfiles/V1/Zip' method='post'><input type='submit'>submit</input><input type='hidden' name='resIds' value='E8FB92ADE8AF1352!154'></input></form>";
+    document.getElementById('dlfile').submit();
+    //$('#dlfile').remove();
+}
+</script>
+</body>
+</html>
