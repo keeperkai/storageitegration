@@ -31,8 +31,18 @@ class Shuffle extends CI_Controller
 		$move_job_id = $this->input->post('move_job_id');
 		$this->shuffleJobModel->registerMoveJobComplete($move_job_id);
 	}
-	public function runServerSideShuffle(){
+	public function executeServerSideShuffle(){
+		if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+		$user = $this->session->userdata('ACCOUNT');
+		$shuffle_job_id = $this->input->post('shuffle_job_id');
+		//get the shuffle data
 		
+		//execute the shuffle data for server side
+		
+		//respond
 	}
 	
 }

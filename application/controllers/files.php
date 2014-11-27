@@ -125,6 +125,16 @@ class Files extends CI_Controller
 		$fileData['parent_virtual_file_id'] = $this->input->post('parent_virtual_file_id');
 		$fileData['allow_chunk'] = $this->settingModel->chunkAllowedForExtension($user, $filedata['extension']);
 		$storage_file_data = json_decode($this->input->post('storage_file_data'), true);
+		/*
+		structure for storage_file_data:
+		array(
+			storage_account_id
+			storage_file_type
+			byte_offset_start
+			byte_offset_end
+			storage_id
+		)
+		*/
 		//var_dump($storage_file_data);
 		$resp = array();
 		$virtual_file_id = false;

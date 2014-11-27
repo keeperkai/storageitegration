@@ -1,5 +1,47 @@
 var CLIENT_MEMORY_LIMIT = 100*1024*1024;
 var CHUNK_SIZE = 4*1024*1024;
+//System operations
+function FileController(){
+
+}
+
+FileController.registerVirtualFileToSystem(mimetype, type, filename, parent_file_id, storage_file_data, callback){
+  var output = false;
+	var filename_tokens = filename.split('.');
+	if(filename_tokens.length>1){
+		extension = filename_tokens[filename_tokens.length-1];
+	}else{//no extension
+		//do nothing
+		extension = 'unknown';
+	}
+	
+	mimetype = mimetype || 'application/octet-stream';
+  $.ajax({
+    url: '../../files/registerfiletosystem',
+    type: 'POST',
+    data: {
+			'mime_type': mimetype,
+    	'file_type': type,
+      'name': filename,
+      'extension': extension,
+      'parent_virtual_file_id': parent_file_id,
+			'storage_file_data': JSON.stringify(storage_file_data)
+		},
+    async: true,
+    success: function(data, textstatus, request) {
+      callback();
+    },
+    error: function(xhr, status, error) {
+      var err = xhr.responseText;
+      console.log(err);
+      alert(err);
+      alert(error);
+    }
+  });
+  return output;//outputs the virtual_file_id of the just registered file
+}
+
+//----------------------
 /*
 	server register operation static class, this class provides the static methods to register shuffle job completion
 */
@@ -48,6 +90,18 @@ ShuffleJobServerRegistrator.registerMoveJobCompleted = function(move_job_id, suc
 	});
 }
 /*
+	this function registers that an upload function has been finished, with the file_id's/target accounts...etc data:
+	array('type'=>'whole','target_account'=>, 'uploaded_file_id'=>);//whole
+	or
+	array('type'=>'chunked','target_account'=>, byte_offset_start, byte_offset_end, 'uploaded_file_id'=>)
+	array('type'=>'chunked','target_account'=>, byte_offset_start, byte_offset_end, 'uploaded_file_id'=>)
+	...
+	the server then registers the storage file data
+*/
+ShuffleJobServerRegistrator.registerUploadFinished(executor.uploadInstructions){
+
+}
+/*
 	this function checks if the movejob is completed, if so it will register the move job to be completed.
 	we need to do this because some of the movejobs are chunk level assigned and we don't know if the client
 	or the server will finish the jobs last, so both sides need to check when they finish the last chunkjob
@@ -73,13 +127,83 @@ ShuffleJobServerRegistrator.checkMoveJobCompleted = function(move_job_id, succes
 		}
 	});
 }
+
+ShuffleJobServerRegistrator.initiateServerShuffleExecution(shuffle_job_id, callback){
+	$.ajax({
+		url: '../../shuffle/executeServerSideShuffle',
+		type: 'POST',
+		data: {
+			'shuffle_job_id':move_job_id,
+		},
+		async: true,
+		success: function(data, textstatus, request) {
+			//all chunks done and move job registered to be done
+			//call the callback function
+			callback(data);
+		},
+		error: function(xhr, status, error) {
+			var err = xhr.responseText;
+			console.log(err);
+			alert(err);
+			alert(error);
+		}
+	});
+}
 /*
 	the whole upload executor, it will execute both the upload and shuffle parts of the instructions, 
 	THIS IS NOT a uploader for a single file.
-	THIS IS AN EXECUTOR FOR THE getUploadInstructions operation
+	THIS IS AN EXECUTOR FOR THE getUploadInstructions operation,
+	it takes the schedule_data of the dispatcher which consists of an shuffle part(optional) and an upload part
+	
+	it also initiates the server side to start executing shuffle jobs
 */
-function WholeUploadExecutor(){
-
+function WholeUploadExecutor(schedule_data, file, parent_file_id){
+	this.file = file;
+	this.parentFileId = parent_file_id;
+	this.uploadPart = schedule_data.upload;
+	this.shufflePart = schedule_data.shuffle;
+	this.serverSideShuffleCompleted = false;
+	this.clientSideShuffleCompleted = false;
+	this.complete = function(){
+	
+	};
+}
+WholeUploadExecutor.prototype.execute(){
+	var executor = this;
+	function checkShuffleComplete(){
+		if(executor.serverSideShuffleCompleted&&executor.clientSideShuffleCompleted){
+			return true;
+		}
+		return false;
+	}
+	
+	this.uploadJobExecutor = new UploadJobExecutor(this.uploadPart, this.file, this.parentFileId);
+	this.uploadJobExecutor.complete = function(){
+		executor.complete();
+	};
+	if(typeof this.shufflePart === 'undefined'){
+		//just upload and call complete
+		
+		this.uploadJobExecutor.execute();
+	}else{
+		//initialize the shuffle job executor, initiate the server side shuffling, after shuffling is done then upload...
+		this.shuffleJobExecutor = new ShuffleJobExecutor(this.shufflePart);
+		
+		//whenever the client or server shuffle jobs are finished, check if both sides are finished,
+		//if so then execute file uploader
+		ShuffleJobServerRegistrator.initiateServerShuffleExecution(executor.shufflePart.shuffle_job_id, function(){
+			executor.serverSideShuffleCompleted = true;
+			if(checkShuffleComplete()){
+				executor.uploadJobExecutor.execute();
+			}
+		});
+		this.shuffleJobExecutor.complete = function(){
+			this.clientSideShuffleCompleted = true;
+			if(checkShuffleComplete()){
+				this.uploadJobExecutor.execute();
+			}
+		};
+	}
 }
 /*
 	this executor executes the upload part of the instructions,
@@ -92,9 +216,106 @@ function WholeUploadExecutor(){
 		...
 	]
 */
-function UploadJobExecutor(uploadpart){
+function UploadJobExecutor(uploadpart, file, parent_file_id){
 	this.uploadInstructions = uploadpart;
+	this.file = file;
+	this.complete = function(instructions_with_storage_file_data){};
 }
+UploadJobExecutor.prototype.execute(){
+	var instructions = this.uploadInstructions;
+	var executor = this;
+	var current_idx = -1;
+	function executeNextUploadInstruction(){
+		current_idx++;
+		if(current_idx<instructions.length){
+			//has next ins to execute
+			executeUploadInstruction(instructions[current_idx]);
+		}else{//all upload jobs are done
+			//ShuffleJobServerRegistrator.registerUploadFinished(executor.uploadInstructions);//this function is not implemented, we will
+			//register the file directly for now
+			//generate storage file data
+			var storage_file_data = [];
+			var instructs = executor.uploadInstructions;
+			var sfile_type = 'file';
+			if(instructs.length>1){//file is split
+				sfile_type = 'split_file';
+				for(var i=0;i<instructs.length;++i){
+					var ins = instructs[i];
+					storage_file_data.push(
+						{
+							ins.target_account.storage_account_id,
+							sfile_type,
+							ins.byte_offset_start,
+							ins.byte_offset_end,
+							ins.uploaded_file_id
+						}
+					);
+				}
+			}else{//whole upload
+				sfile_type = 'file';
+				var ins = instructs[0];
+				storage_file_data.push(
+					{
+						ins.target_account.storage_account_id,
+						sfile_type,
+						ins.uploaded_file_id
+					}
+				);
+			}
+			//register virtual file and storage file metadata to our server
+			FileController.registerVirtualFileToSystem(
+				executor.file.type,
+				'file',
+				executor.file.name, 
+				parent_file_id, 
+				storage_file_data, 
+				function(){
+					executor.complete(executor.uploadInstructions);
+				}
+			);
+			return;
+		}
+	}
+	function executeUploadInstruction(ins){
+		var uploader = new FileUploader(executor.file, ins.target_account);
+		uploader.complete = function(id){
+			//save the storage_id of the uploaded file to the instruction field 'uploaded_file_id'
+			executor.uploadInstructions[current_idx].uploaded_file_id = id;
+			executeNextUploadInstruction();
+		};
+		if(ins.type == 'whole'){
+			uploader.uploadWhole();
+		}else if(ins.type == 'chunked'){
+			uploader.uploadPart(ins.byte_offset_start, ins.byte_offset_end);
+		}
+	}
+	
+	
+}
+function FileUploader(file, target_account){
+	this.file = file;
+	this.storageAccount = target_account;
+	var complete = function(file_id){};
+}
+FileUploader.prototype.uploadWhole(){
+	var executor = this;
+	var file = this.file;
+	var uploader = DataUploadExecutorFactory.createDataUploadExecutor(this.storageAccount, file.name, file.type || 'application/octet-stream', file.size);
+	uploader.complete = function(id){
+		executor.complete(id);
+	}
+	uploader.uploadWhole(file);
+}
+FileUploader.prototype.uploadPart(bstart, bend){
+	var executor = this;
+	var file = this.file;
+	var uploader = DataUploadExecutorFactory.createDataUploadExecutor(this.storageAccount, file.name, file.type || 'application/octet-stream', file.size);
+	uploader.complete = function(id){
+		executor.complete(id);
+	}
+	uploader.uploadWhole(file.slice(bstart, bend+1));
+}
+/*
 function FileUploaderFactory(){
 
 }
@@ -151,6 +372,8 @@ OneDriveFileUploader.prototype.uploadPart(bstart, bend){
 	}
 	uploader.uploadWhole(file.slice(bstart, bend+1));
 }
+*/
+
 /*
 	this executor executes the shuffle part of the instructions for the client side,
 	THIS DOES NOT INCLUDE THE SERVER SIDE SHUFFLEJOB INSTRUCTION EXECUTION(that part is
