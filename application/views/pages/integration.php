@@ -23,6 +23,7 @@
 <table id='selecthostingtable' class='table'>
 </table>
 </div>
+<script src="<?php echo base_url();?>asset/js/jobexecutors.js"></script>
 <script src="<?php echo base_url();?>asset/js/googlefunctions.js"></script>
 <script src="<?php echo base_url();?>asset/js/integrationfunctions.js"></script>
 <script src="<?php echo base_url();?>asset/js/integration.js"></script>

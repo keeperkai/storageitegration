@@ -71,9 +71,13 @@ class GoogleDriveModel extends CI_Model
 		return $token;
 	}
 	public function deleteStorageFile($storage_id, $storage_account){
-		$client = $this->setupGoogleClient($storage_account_data);
+		$client = $this->setupGoogleClient($storage_account);
 		$service = $this->setupDriveService($client);
-		$service->files->delete($storage_id);
+        try{
+            $service->files->delete($storage_id);
+        }catch(Exception $e){
+        
+        }
 	}
 	//permission functions
 	/*
@@ -128,4 +132,110 @@ class GoogleDriveModel extends CI_Model
 		}
 		return false;
 	}
+    private function getFilesUnderFolder($folder_id, $storage_account){
+        $pageToken = NULL;
+        $client = $this->setupGoogleClient($storage_account);
+        $service = $this->setupDriveService($client);
+        $output = array();
+        do {
+            try {
+                $parameters = array();
+                if ($pageToken) {
+                $parameters['pageToken'] = $pageToken;
+                }
+                $children = $service->children->listChildren($folder_id, $parameters);
+        
+                foreach ($children->getItems() as $child) {
+                //print 'File Id: ' . $child->getId();
+                    $output[]=$child->getId();
+                }
+                $pageToken = $children->getNextPageToken();
+            } catch (Exception $e) {
+                print "An error occurred: " . $e->getMessage();
+                $pageToken = NULL;
+            }
+        } while ($pageToken);
+        return $output;
+    }
+    public function purge($storage_account){
+        //get all file ids under root folder
+        $files_under_root = $this->getFilesUnderFolder('root', $storage_account);
+        foreach($files_under_root as $file_id){
+            $this->deleteStorageFile($file_id, $storage_account);
+        }
+    }
+    
+    
+    //Shuffle related / upload/download/copy files------------
+    public function uploadFile($storage_account, $file_name, $file_mime, $file_size, $file){
+        $client = $this->setupGoogleClient($storage_account);
+        $service = $this->setupDriveService($client);
+        
+        
+        $google_api_file = new Google_Service_Drive_DriveFile();
+        $google_api_file->title = $file_name;
+        $chunkSizeBytes = 1 * 1024 * 1024;
+
+        // Call the API with the media upload, defer so it doesn't immediately return.
+        $client->setDefer(true);
+        $request = $service->files->insert($google_api_file);
+
+        // Create a media file upload to represent our upload process.
+        $media = new Google_Http_MediaFileUpload(
+          $client,
+          $request,
+          $file_mime,
+          null,
+          true,
+          $chunkSizeBytes
+        );
+        $media->setFileSize($file_size);
+
+        // Upload the various chunks. $status will be false until the process is
+        // complete.
+        $status = false;
+        while (!$status && !feof($file)) {
+          $chunk = fread($file, $chunkSizeBytes);
+          $status = $media->nextChunk($chunk);
+         }
+
+        // The final value of $status will be the data from the API for the object
+        // that has been uploaded.
+        $result = false;
+        if($status != false) {
+          $result = $status;
+        }
+        // Reset to the client to execute requests immediately in the future.
+        $client->setDefer(false);
+        return $result['id'];
+    }
+    /*
+        download a storage file on the server and stream it to hard drive
+        storage_id: the id of the file to download on the storage provider
+        file: the files resource to write to, the function will start writing from the current position, so you need to initialize it to the
+        right position. By doing it this way, you can download a lot of data from different storage files and append them into the same file
+        resource.
+        
+        Take note that curl rewinds the file pointer after it has finished the operation. If you want to append multiple downloads together, use
+        fseek($fp, 0, SEEK_END); to move the position to the current end before calling this function.
+        
+        returns:
+        the handle to the file resource that has been downloaded, with the position set back to 0
+    */
+    public function downloadFile($storage_account, $storage_id, $file){
+        
+    }
+    /*
+        this function downloads a part of a storage file to our server, the byte offsets are specified by $start_offset and $end_offset(inclusive),
+        the function writes to the $file resource and returns a reference to it.
+    */
+    public function downloadChunk($storage_account, $storage_id, $start_offset, $end_offset, $file){
+        
+    }
+    /*
+        copies a file from $source_account to $target_account on the storage provider through api calls, so we don't need to actually transfer the data.
+    */
+    public function apiCopyFileBetweenAccounts($source_account, $storage_id, $target_account){
+        
+    }
 }

@@ -4,8 +4,12 @@ var CHUNK_SIZE = 4*1024*1024;
 function FileController(){
 
 }
-
-FileController.registerVirtualFileToSystem(mimetype, type, filename, parent_file_id, storage_file_data, callback){
+/*
+  register a virtual file to our system, along with it's storage file data on the cloud storage providers.
+  
+  Note that type is {file, folder} which is different from mimetype
+*/
+FileController.registerVirtualFileToSystem = function(mimetype, type, filename, parent_file_id, storage_file_data, callback){
   var output = false;
 	var filename_tokens = filename.split('.');
 	if(filename_tokens.length>1){
@@ -48,13 +52,13 @@ FileController.registerVirtualFileToSystem(mimetype, type, filename, parent_file
 function ShuffleJobServerRegistrator(){
 
 }
-ShuffleJobServerRegistrator.registerChunkJobCompleted = function(chunk_job_id, uploaded_file_id, success_callback){
+ShuffleJobServerRegistrator.registerChunkJobCompleted = function(chunk_job_id, uploaded_storage_id, success_callback){
 	$.ajax({
-		url: '../../shuffle/registerchunkjobcomplete',
+		url: '../../shuffle/registerchunkjobcompleted',
 		type: 'POST',
 		data: {
 			'chunk_job_id':chunk_job_id,
-			'uploaded_file_id':uploaded_file_id
+			'uploaded_storage_id':uploaded_storage_id
 		},
 		async: true,
 		success: function(data, textstatus, request) {
@@ -70,7 +74,7 @@ ShuffleJobServerRegistrator.registerChunkJobCompleted = function(chunk_job_id, u
 }
 ShuffleJobServerRegistrator.registerMoveJobCompleted = function(move_job_id, success_callback){
 	$.ajax({
-		url: '../../shuffle/registermovejobcomplete',
+		url: '../../shuffle/registermovejobcompleted',
 		type: 'POST',
 		data: {
 			'move_job_id':move_job_id,
@@ -91,14 +95,14 @@ ShuffleJobServerRegistrator.registerMoveJobCompleted = function(move_job_id, suc
 }
 /*
 	this function registers that an upload function has been finished, with the file_id's/target accounts...etc data:
-	array('type'=>'whole','target_account'=>, 'uploaded_file_id'=>);//whole
+	array('type'=>'whole','target_account'=>, 'uploaded_storage_id'=>);//whole
 	or
-	array('type'=>'chunked','target_account'=>, byte_offset_start, byte_offset_end, 'uploaded_file_id'=>)
-	array('type'=>'chunked','target_account'=>, byte_offset_start, byte_offset_end, 'uploaded_file_id'=>)
+	array('type'=>'chunked','target_account'=>, byte_offset_start, byte_offset_end, 'uploaded_storage_id'=>)
+	array('type'=>'chunked','target_account'=>, byte_offset_start, byte_offset_end, 'uploaded_storage_id'=>)
 	...
 	the server then registers the storage file data
 */
-ShuffleJobServerRegistrator.registerUploadFinished(executor.uploadInstructions){
+ShuffleJobServerRegistrator.registerUploadFinished = function(upload_instructions_with_storage_id){
 
 }
 /*
@@ -108,7 +112,7 @@ ShuffleJobServerRegistrator.registerUploadFinished(executor.uploadInstructions){
 */
 ShuffleJobServerRegistrator.checkMoveJobCompleted = function(move_job_id, success_callback){
 	$.ajax({
-		url: '../../shuffle/checkmovejobcomplete',
+		url: '../../shuffle/checkmovejobcompleted',
 		type: 'POST',
 		data: {
 			'move_job_id':move_job_id,
@@ -128,12 +132,12 @@ ShuffleJobServerRegistrator.checkMoveJobCompleted = function(move_job_id, succes
 	});
 }
 
-ShuffleJobServerRegistrator.initiateServerShuffleExecution(shuffle_job_id, callback){
+ShuffleJobServerRegistrator.initiateServerShuffleExecution = function(shuffle_job_id, callback){
 	$.ajax({
 		url: '../../shuffle/executeServerSideShuffle',
 		type: 'POST',
 		data: {
-			'shuffle_job_id':move_job_id,
+			'shuffle_job_id':shuffle_job_id,
 		},
 		async: true,
 		success: function(data, textstatus, request) {
@@ -168,9 +172,11 @@ function WholeUploadExecutor(schedule_data, file, parent_file_id){
 	
 	};
 }
-WholeUploadExecutor.prototype.execute(){
+WholeUploadExecutor.prototype.execute = function(){
 	var executor = this;
 	function checkShuffleComplete(){
+    //console.log("check shuffle complete called");
+    //console.log("executor serverSideShuffleCompleted: "+executor.serverSideShuffleCompleted+", executor clientSideShuffleCompleted"+ executor.clientSideShuffleCompleted);
 		if(executor.serverSideShuffleCompleted&&executor.clientSideShuffleCompleted){
 			return true;
 		}
@@ -183,7 +189,6 @@ WholeUploadExecutor.prototype.execute(){
 	};
 	if(typeof this.shufflePart === 'undefined'){
 		//just upload and call complete
-		
 		this.uploadJobExecutor.execute();
 	}else{
 		//initialize the shuffle job executor, initiate the server side shuffling, after shuffling is done then upload...
@@ -194,15 +199,17 @@ WholeUploadExecutor.prototype.execute(){
 		ShuffleJobServerRegistrator.initiateServerShuffleExecution(executor.shufflePart.shuffle_job_id, function(){
 			executor.serverSideShuffleCompleted = true;
 			if(checkShuffleComplete()){
-				executor.uploadJobExecutor.execute();
+        executor.uploadJobExecutor.execute();
 			}
 		});
-		this.shuffleJobExecutor.complete = function(){
-			this.clientSideShuffleCompleted = true;
-			if(checkShuffleComplete()){
-				this.uploadJobExecutor.execute();
-			}
-		};
+		this.shuffleJobExecutor.execute(
+      function(){
+        executor.clientSideShuffleCompleted = true;
+        if(checkShuffleComplete()){
+          executor.uploadJobExecutor.execute();
+        }
+      }
+    );
 	}
 }
 /*
@@ -219,9 +226,10 @@ WholeUploadExecutor.prototype.execute(){
 function UploadJobExecutor(uploadpart, file, parent_file_id){
 	this.uploadInstructions = uploadpart;
 	this.file = file;
+  this.parentFileId = parent_file_id;
 	this.complete = function(instructions_with_storage_file_data){};
 }
-UploadJobExecutor.prototype.execute(){
+UploadJobExecutor.prototype.execute = function(){
 	var instructions = this.uploadInstructions;
 	var executor = this;
 	var current_idx = -1;
@@ -243,11 +251,12 @@ UploadJobExecutor.prototype.execute(){
 					var ins = instructs[i];
 					storage_file_data.push(
 						{
-							ins.target_account.storage_account_id,
-							sfile_type,
-							ins.byte_offset_start,
-							ins.byte_offset_end,
-							ins.uploaded_file_id
+							'storage_account_id':ins.target_account.storage_account_id,
+							'storage_file_type':sfile_type,
+							'byte_offset_start':ins.byte_offset_start,
+							'byte_offset_end':ins.byte_offset_end,
+              'storage_file_size':ins.byte_offset_end-ins.byte_offset_start+1,
+							'storage_id':ins.uploaded_storage_id
 						}
 					);
 				}
@@ -256,9 +265,12 @@ UploadJobExecutor.prototype.execute(){
 				var ins = instructs[0];
 				storage_file_data.push(
 					{
-						ins.target_account.storage_account_id,
-						sfile_type,
-						ins.uploaded_file_id
+						'storage_account_id':ins.target_account.storage_account_id,
+							'storage_file_type':sfile_type,
+							'byte_offset_start':0,
+							'byte_offset_end':executor.file.size-1,
+              'storage_file_size':executor.file.size,
+              'storage_id':ins.uploaded_storage_id
 					}
 				);
 			}
@@ -267,7 +279,7 @@ UploadJobExecutor.prototype.execute(){
 				executor.file.type,
 				'file',
 				executor.file.name, 
-				parent_file_id, 
+				executor.parentFileId, 
 				storage_file_data, 
 				function(){
 					executor.complete(executor.uploadInstructions);
@@ -279,8 +291,8 @@ UploadJobExecutor.prototype.execute(){
 	function executeUploadInstruction(ins){
 		var uploader = new FileUploader(executor.file, ins.target_account);
 		uploader.complete = function(id){
-			//save the storage_id of the uploaded file to the instruction field 'uploaded_file_id'
-			executor.uploadInstructions[current_idx].uploaded_file_id = id;
+			//save the storage_id of the uploaded file to the instruction field 'uploaded_storage_id'
+			executor.uploadInstructions[current_idx].uploaded_storage_id = id;
 			executeNextUploadInstruction();
 		};
 		if(ins.type == 'whole'){
@@ -289,7 +301,7 @@ UploadJobExecutor.prototype.execute(){
 			uploader.uploadPart(ins.byte_offset_start, ins.byte_offset_end);
 		}
 	}
-	
+	executeNextUploadInstruction();
 	
 }
 function FileUploader(file, target_account){
@@ -297,7 +309,7 @@ function FileUploader(file, target_account){
 	this.storageAccount = target_account;
 	var complete = function(file_id){};
 }
-FileUploader.prototype.uploadWhole(){
+FileUploader.prototype.uploadWhole = function(){
 	var executor = this;
 	var file = this.file;
 	var uploader = DataUploadExecutorFactory.createDataUploadExecutor(this.storageAccount, file.name, file.type || 'application/octet-stream', file.size);
@@ -306,10 +318,10 @@ FileUploader.prototype.uploadWhole(){
 	}
 	uploader.uploadWhole(file);
 }
-FileUploader.prototype.uploadPart(bstart, bend){
+FileUploader.prototype.uploadPart = function(bstart, bend){
 	var executor = this;
 	var file = this.file;
-	var uploader = DataUploadExecutorFactory.createDataUploadExecutor(this.storageAccount, file.name, file.type || 'application/octet-stream', file.size);
+	var uploader = DataUploadExecutorFactory.createDataUploadExecutor(this.storageAccount, 'chunk_data_'+file.name, file.type || 'application/octet-stream', bend-bstart+1);
 	uploader.complete = function(id){
 		executor.complete(id);
 	}
@@ -381,8 +393,9 @@ OneDriveFileUploader.prototype.uploadPart(bstart, bend){
 */
 function ShuffleJobExecutor(shufflejob){
 	this.shuffleJob = shufflejob;
-)
-ShuffleJobExecutor.prototype.execute(callback){
+}
+ShuffleJobExecutor.prototype.execute = function(callback){
+  callback = callback || function(){};
 	//execute each movejob sequentially, but only execute the ones that are executable on the client
 	var current_movejob_idx = -1;
 	var movejobs = this.shuffleJob.move_job;
@@ -392,7 +405,7 @@ ShuffleJobExecutor.prototype.execute(callback){
 		current_movejob_idx++;
 		var movejobexecutor = null;
 		while(current_movejob_idx<movejobs.length){
-			movejobexecutor = MoveJobExecutorFactory.createMoveJobExecutor(movejobs['current_movejob_idx']);
+			movejobexecutor = MoveJobExecutorFactory.createMoveJobExecutor(movejobs[current_movejob_idx]);
 			if(movejobexecutor != null) break;
 			current_movejob_idx++;
 		}
@@ -408,7 +421,7 @@ ShuffleJobExecutor.prototype.execute(callback){
 function MoveJobExecutorFactory(){
 
 }
-MoveJobExecutorFactory.createMoveJobExecutor(movejob){
+MoveJobExecutorFactory.createMoveJobExecutor = function(movejob){
 	if(movejob.job_type == 'download_whole_file_and_distribute_on_client'){
 		return new WholeFileDownloadMoveJobExecutor(movejob);
 	}else if(movejob.job_type == 'chunk_level_assign'){
@@ -437,6 +450,7 @@ WholeFileDownloadMoveJobExecutor.prototype.execute = function(callback){
 	//Note: 1.the chunks would all be smaller than the whole file, the whole file fits in the client memory limit
 	//so all the chunks should be able to fit too, so we don't need chunk uploading.
 	//2.all the chunks will be uploaded through the client, no need to see if the chunk jobs are in fact client jobs
+  callback = callback || function(){};
 	var movejobexecutor = this;
 	var sourcefile = this.moveJob.source_file;
 	var sourceacc = this.moveJob.source_account;
@@ -511,11 +525,12 @@ ChunkLevelMoveJobExecutor.prototype.execute = function(callback){
 	//the data according to CHUNK_SIZE and send them via multiple requests
 	
 	//Note that some chunks might be assigned to the server, so we need to ignore them when choosing the next chunk to upload
-	var executor = this;
+	callback = callback || function(){};
+  var executor = this;
 	var current_chunk_idx = -1;
 	var chunk_jobs = this.moveJob.chunk_job;
-	var source_account = moveJob.source_account;
-	var source_file = moveJob.source_file;
+	var source_account = this.moveJob.source_account;
+	var source_file = this.moveJob.source_file;
 	var downloader = {};
 	function executenextchunkjob(){
 		//find the next chunk that has executor set to client
@@ -527,7 +542,8 @@ ChunkLevelMoveJobExecutor.prototype.execute = function(callback){
 			//next chunk job found
 			//init downloader, we will be using the same downloader for this chunkjob
 			downloader = DataDownloadExecutorFactory.createDataDownloadExecutor(source_account, source_file['storage_id']);
-			uploadchunk(chunk_jobs[current_chunk_idx]);
+			//uploadchunk(chunk_jobs[current_chunk_idx]);//this line is wrong, there is no upload chunk
+      executechunkjob(chunk_jobs[current_chunk_idx]);
 		}else{//all client chunk jobs completed
 			//check move job completed, we don't know if the server side chunk jobs are completed so we check
 			ShuffleJobServerRegistrator.checkMoveJobCompleted(executor.moveJob.move_job_id, callback);
@@ -565,38 +581,40 @@ ChunkLevelMoveJobExecutor.prototype.execute = function(callback){
 		}
 		var filetype = source_file.mime_type;
 		var filesize = source_file.storage_file_size;
-		var uploader = DataUploadExecutorFactory.createDataUploadExecutor(storage_account, filename, filetype, filesize);
-		uploader.chunkUploaded = uploadnextchunk;
-		uploader.complete = chunkjobcomplete;
-		var bstart = chunkjob.byte_offset_start;
-		var bend = chunkjob.byte_offset_end;
-		var current_bstart = bstart;
-		uploadnextchunk();
-		function chunkjobcomplete(id){
-			ShuffleJobServerRegistrator.registerChunkJobCompleted(chunkjob.chunk_job_id, id, executenextchunkjob);
-		}
-		function uploadnextchunk(){
-			//uploads the next chunk of data for the current chunkjob
-			//check boundary for current_bstart
-			/*
-			if(current_bstart>bend){
-				//this chunkjob is uploaded.
-				//register chunk job complete, then execute the next chunkjob
-				ShuffleJobServerRegistrator.registerChunkJobCompleted();
-				executenextchunkjob();
-				return;
-			}
-			*/
-			//calculate the byte offsets
-			var current_bend = (current_bstart+CHUNK_SIZE-1>bend)?bend:current_bstart+CHUNK_SIZE-1;
-			//update bstart for the next loops
-			var last_bstart = current_bstart;
-			current_bstart = current_bend+1;
-			downloader.downloadChunk(last_bstart, current_bend, function(dl_data){
-				uploader.uploadChunk(dl_data);
-			});
-		}
-		
+		var uploader = DataUploadExecutorFactory.createDataUploadExecutor(chunkjob.target_account, source_file.name, source_file.mime_type, source_file.storage_file_size);
+    //here we need to determine where we can upload the whole data once or the memory isn't enough, then we need to upload the data using chunk dl->chunk upload, which is not supported by all
+    //uploaders, but the client executor shouldn't have to worry about this because the scheduler will take care of this, all we need to do is check the chunk size
+    var chunkjob_size = chunkjob.byte_offset_end - chunkjob.byte_offset_end + 1;
+    function chunkjobcomplete(id){
+      ShuffleJobServerRegistrator.registerChunkJobCompleted(chunkjob.chunk_job_id, id, executenextchunkjob);
+    }
+    if(chunkjob_size >= CLIENT_MEMORY_LIMIT){//the client memory is not big enough to move the chunkjob in one shot, so do partial dl->resumable upload
+      uploader.chunkUploaded = uploadnextchunk;
+      uploader.complete = chunkjobcomplete;
+      var bstart = chunkjob.byte_offset_start;
+      var bend = chunkjob.byte_offset_end;
+      var current_bstart = bstart;
+      uploadnextchunk();
+      
+      function uploadnextchunk(){
+        //uploads the next chunk of data for the current chunkjob
+        //calculate the byte offsets
+        var current_bend = (current_bstart+CHUNK_SIZE-1>bend)?bend:current_bstart+CHUNK_SIZE-1;
+        //update bstart for the next loops
+        var last_bstart = current_bstart;
+        current_bstart = current_bend+1;
+        downloader.downloadChunk(last_bstart, current_bend, function(dl_data){
+          uploader.uploadChunk(dl_data);
+        });
+      }
+		}else{//client memory is sufficient to move the chunkjob in one shot
+      uploader.complete = chunkjobcomplete;
+      downloader.downloadChunk(chunkjob.byte_offset_start, chunkjob.byte_offset_end, function(dl_data){
+        //must be partial, because if it were to download the whole source file, the job would be assigned to a WholeFileDownloadMoveJobExecutor
+        uploader.uploadWhole(dl_data);
+      });
+      
+    }
 	}
 	executenextchunkjob();
 }
@@ -630,11 +648,11 @@ ChunkJobExecutor.prototype.execute = function(callback){
 function DataUploadExecutorFactory(){
 	
 }
-DataUploadExecutorFactory.createDataUploadExecutor(storage_account, filename, filetype, filesize){
+DataUploadExecutorFactory.createDataUploadExecutor = function(storage_account, filename, filetype, filesize){
 	if(storage_account.token_type == 'onedrive'){
-		return new OneDriveDataUploadExecutor(storage_account, filename, filetype, filesize);
+		return new OneDriveDataUploadExecutor(filename, filetype, storage_account.access_token, filesize);
 	}else if(storage_account.token_type == 'googledrive'){
-		return new GoogleDriveDataUploadExecutor(storage_account, filename, filetype, filesize);
+		return new GoogleDriveDataUploadExecutor(filename, filetype, storage_account.access_token, filesize);
 	}
 }
 /*
@@ -662,6 +680,8 @@ function GoogleDriveDataUploadExecutor(filename, filetype, access_token, filesiz
 	this.accessToken = access_token;
 	this.fileSize = filesize;
 	this.chunkUploadUrl = '';
+  this.chunkUploaded = function(){};
+  this.complete = function(){};
 }
 GoogleDriveDataUploadExecutor.prototype.getUploadUrl = function(callback){
 	var executor = this;
@@ -723,14 +743,14 @@ GoogleDriveDataUploadExecutor.prototype.uploadChunk = function(data){
 			data: data,
 			async: true,
 			statusCode: {
-			308: function() {
+			308: function(resp) {
 					uploadexecutor.currentByteOffset = byteOffsetEnd + 1;
-					uploadexecutor.chunkUploaded(data);
+					uploadexecutor.chunkUploaded(resp);
 				}
 			},
-			success: function(data) {
-				uploadexecutor.chunkUploaded(data);
-				uploadexecutor.complete(data.id);
+			success: function(resp) {
+				uploadexecutor.chunkUploaded(resp);
+				uploadexecutor.complete(resp.id);
 			},
 			error: function(xhr, status, error) {
 				
@@ -739,18 +759,33 @@ GoogleDriveDataUploadExecutor.prototype.uploadChunk = function(data){
 	});
 }
 GoogleDriveDataUploadExecutor.prototype.uploadWhole = function(data){
-	if(this.chunkUploadUrl == ''){
-		this.chunkUploadUrl = this.getUploadUrl();
-	}
 	var executor = this;
-	this.chunkUploaded = function(response){
-		//get the offsets
-		var end_offset = (executor.currentByteOffset+CHUNK_SIZE-1>executor.fileSize-1)?executor.fileSize-1:executor.currentByteOffset+CHUNK_SIZE-1;
-		//create the sub array buffer
-		executor.chunkUpload(data.slice(executor.currentByteOffset, end_offset));
-	};
-	var first_end_offset = (executor.currentByteOffset+CHUNK_SIZE-1>executor.fileSize-1)?executor.fileSize-1:executor.currentByteOffset+CHUNK_SIZE-1;
-	this.chunkUpload(data.slice(executor.currentByteOffset, first_end_offset));
+	
+  this.getUploadUrl(function(){
+    /*
+    var uploadexecutor = this;
+    var xhr = new XMLHttpRequest();
+    xhr.onload = function(e){
+      uploadexecutor.complete(e.data.id);
+    };
+    xhr.open('PUT', executor.chunkUploadUrl, true);
+    xhr.send();
+    }
+    reader.readAsArrayBuffer(data);
+    */
+    executor.uploadChunk(data);
+    /*
+    executor.chunkUploaded = function(response){
+      //get the offsets
+      var end_offset = (executor.currentByteOffset+CHUNK_SIZE-1>executor.fileSize-1)?executor.fileSize-1:executor.currentByteOffset+CHUNK_SIZE-1;
+      //create the sub array buffer
+      executor.uploadChunk(data.slice(executor.currentByteOffset, end_offset));
+    };
+    var first_end_offset = (executor.currentByteOffset+CHUNK_SIZE-1>executor.fileSize-1)?executor.fileSize-1:executor.currentByteOffset+CHUNK_SIZE-1;
+    executor.uploadChunk(data.slice(executor.currentByteOffset, first_end_offset+1));
+    */
+  });
+	
 }
 function OneDriveDataUploadExecutor(filename, filetype, access_token, filesize){
 	this.currentByteOffset = 0;
@@ -758,29 +793,105 @@ function OneDriveDataUploadExecutor(filename, filetype, access_token, filesize){
 	this.fileType = filetype || 'application/octet-stream';;
 	this.accessToken = access_token;
 	this.fileSize = filesize;
-	this.chunkUploadUrl = '';
+	this.uploadUrl = '';
+}
+/*
+  for providers like onedrive, they cannot allow files with the same filename under the same folder,
+  so we should create a timestamp folder before we upload to the folder
+*/
+OneDriveDataUploadExecutor.prototype.getUploadUrl = function(callback){
+  var executor = this;
+  if(this.uploadUrl == ''){
+    //create a folder:
+    //POST https://apis.live.net/v5.0/me/skydrive
+
+    //Authorization: Bearer ACCESS_TOKEN
+    //Content-Type: application/json
+
+    //{
+      //  "name": "My example folder"
+    //}
+  
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', 'https://apis.live.net/v5.0/me/skydrive?access_token='+executor.accessToken+'&overwrite=ChooseNewName', true);
+    xhr.responseType = 'json';
+    //xhr.setRequestHeader('Authorization', 'Bearer ' + executor.accessToken);this line doesn't work in cors, doesn't allow this header, use query parameter instead
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.onload = function(){
+      var metadata = xhr.response;
+      executor.uploadUrl = metadata.upload_location+'?access_token='+executor.accessToken+'&downsize_photo_uploads=false&overwrite=ChooseNewName';
+      callback();
+    };
+    xhr.send(JSON.stringify(
+      {
+        'name': new Date().getTime()+'_SI_gen_dir'
+      }
+    ));
+  }else{
+    callback();
+  }
+  
 }
 OneDriveDataUploadExecutor.prototype.uploadChunk = function(data){
 	console.log('chunk upload for onedrive is not supported');
 }
 OneDriveDataUploadExecutor.prototype.uploadWhole = function(data){
 	var uploadexecutor = this;
-	var reader = new FileReader();
-	reader.onload = function(e){
-		var bindata = reader.result;
-		var xhr = new XMLHttpRequest();
-		xhr.onload = function(e){
-			uploadexecutor.complete(e.data.id);
-		};
-		xhr.open('PUT', 'https://apis.live.net/v5.0/me/skydrive/files/'+uploadexecutor.fileName+'?access_token='+uploadexecutor.accessToken+'&downsize_photo_uploads=false&overwrite=false', true);
-		xhr.send(bindata);
-	}
-	reader.readAsArrayBuffer(data);
+  var formdata = new FormData();
+	formdata.append('file', data);
+  uploadexecutor.getUploadUrl(
+    function(){
+      var xhr = new XMLHttpRequest();
+      //xhr.open('POST', 'https://apis.live.net/v5.0/me/skydrive/files?access_token='+uploadexecutor.accessToken+'&downsize_photo_uploads=false&overwrite=ChooseNewName', true);
+      xhr.open('POST', uploadexecutor.uploadUrl, true);
+      xhr.responseType = 'json';
+      xhr.onload = function(){
+        var id = xhr.response.id;
+        //rename the file, since it is called 'blob' right now
+        /*
+        PUT https://apis.live.net/v5.0/file.a6b2a7e8f2515e5e.A6B2A7E8F2515E5E!126
+
+        Authorization: Bearer ACCESS_TOKEN
+        Content-Type: application/json
+
+        {
+            "name": "MyNewFileName.doc"
+        }
+        */
+
+        var xhr2 = new XMLHttpRequest();
+        xhr2.open('PUT', 'https://apis.live.net/v5.0/'+id+'?access_token='+uploadexecutor.accessToken+'&downsize_photo_uploads=false&overwrite=ChooseNewName', true);
+        xhr2.setRequestHeader('Content-Type', 'application/json');
+        xhr2.onload = function(){
+          //alert('still fired, id= '+ id);//onload is still gonna be fired when it is a 400 bad request(because the file name already exists) so this implementation is somewhat fine
+          uploadexecutor.complete(id);
+        };
+        xhr2.send(JSON.stringify({'name':uploadexecutor.fileName}));
+      }
+      //xhr.open('POST', '../../test/justechook', true);
+      xhr.send(formdata);
+      
+      /*
+      //read first and send binary data, not memory friendly
+      var reader = new FileReader();
+      reader.onload = function(e){
+        var bindata = reader.result;
+        var xhr = new XMLHttpRequest();
+        xhr.onload = function(){
+          uploadexecutor.complete(xhr.response.id);
+        };
+        xhr.open('PUT', 'https://apis.live.net/v5.0/me/skydrive/files/'+uploadexecutor.fileName+'?access_token='+uploadexecutor.accessToken+'&downsize_photo_uploads=false&overwrite=ChooseNewName', true);
+        xhr.responseType = 'json';
+        xhr.send(bindata);
+      }
+      reader.readAsArrayBuffer(data);
+      */
+    });
 }
 function DataDownloadExecutorFactory(){
 	
 }
-DataDownloadExecutorFactory.createDataDownloadExecutor(storage_account, file_id){
+DataDownloadExecutorFactory.createDataDownloadExecutor = function(storage_account, file_id){
 	if(storage_account.token_type == 'onedrive'){
 		return new OneDriveDataDownloadExecutor(storage_account.access_token, file_id);
 	}else if(storage_account.token_type == 'googledrive'){
@@ -831,14 +942,15 @@ GoogleDriveDataDownloadExecutor.prototype.downloadChunk = function(byte_offset_s
 	this.getDownloadUrl(
 		function(){
 			var oReq = new XMLHttpRequest();
-			oReq.open("GET", executor.downloadUrl, true);
+			oReq.open("GET", executor.downloadUrl+'&forcenocache='+new Date().getTime(), true);
 			oReq.responseType = "arraybuffer";
 			oReq.setRequestHeader('Authorization', 'Bearer '+executor.accessToken);
 			oReq.setRequestHeader('Range', 'bytes='+byte_offset_start+'-'+byte_offset_end);
 			oReq.onload = function(oEvent) {
 				var blob = new Blob([oReq.response], {type: oReq.getResponseHeader('content-type')});
 				callback(blob);
-			};
+        //delete oReq;
+      };
 			oReq.send();
 		}
 	);
@@ -851,10 +963,11 @@ GoogleDriveDataDownloadExecutor.prototype.downloadWhole = function(callback){
 			var oReq = new XMLHttpRequest();
 			oReq.open("GET", executor.downloadUrl, true);
 			oReq.responseType = "arraybuffer";
-			oReq.setRequestHeader('Authorization', 'Bearer '+accessToken);
+			oReq.setRequestHeader('Authorization', 'Bearer '+executor.accessToken);
 			oReq.onload = function(oEvent) {
 				var blob = new Blob([oReq.response], {type: oReq.getResponseHeader('content-type')});
 				callback(blob);
+        delete oReq;
 			};
 			oReq.send();
 		}

@@ -13,7 +13,7 @@ class ShuffleJobModel extends CI_Model
 		$r = $q->result_array();
 		return $r;
 	}
-	public function registerChunkJobComplete($chunk_job_id, $uploaded_storage_id){
+	public function registerChunkJobCompleted($chunk_job_id, $uploaded_storage_id){
 		//update database data
 		$this->db->update('chunk_job', array('status'=>'complete','uploaded_storage_id'=>$uploaded_storage_id),array('chunk_job_id'=>$chunk_job_id));
 	}
@@ -23,19 +23,25 @@ class ShuffleJobModel extends CI_Model
 		or the server will finish the jobs last, so both sides need to check when they finish the last chunkjob
 	*/
 
-	public function checkMoveJobComplete($move_job_id){
+	public function checkMoveJobCompleted($move_job_id){
+        $q = $this->db->get_where('move_job', array('move_job_id'=>$move_job_id));
+        $m = $q->result_array();
+        if(sizeof($m)==0)   return false;
+        if($m[0]['status'] == 'complete') return true;
 		$q = $this->db->get_where('chunk_job', array('move_job_id'=>$move_job_id, 'status'=>'waiting'));
 		$unfinished = $q->result_array();
 		if(sizeof($unfinished)>0){
-			header('Content-Type: application/json');
-			echo json_encode(array('completed'=>false));
+            return false;
 		}else{
-			$this->registerMoveJobComplete($move_job_id);
-			header('Content-Type: application/json');
-			echo json_encode(array('completed'=>true));
+            $this->registerMoveJobCompleted($move_job_id);
+			return true;
 		}
 	}
-	public function registerMoveJobComplete($move_job_id){
+    /*
+        registers that the move job is completed and updates the storage file data in our database accordingly.
+        also deletes the old files stored on cloud storages.
+    */
+	public function registerMoveJobCompleted($move_job_id){
 		$this->db->update('move_job', array('status'=>'complete'), array('move_job_id'=>$move_job_id));
 		$q = $this->db->get_where('move_job', array('move_job_id'=>$move_job_id));
 		$r = $q->result_array();
@@ -43,13 +49,12 @@ class ShuffleJobModel extends CI_Model
 		//create new storage_files in our system, propagate old shared permissions in the cloud storage if needed
 		//delete old storage files in our system
 		//delete old file from cloud storage
-		
 		//get the old storage file
 		$old_sfile = $this->fileModel->getStorageFile($movejob['source_file']);
 		//get the chunk job data
 		$chunk_jobs = $this->getChunkJobsWithMoveJobId($move_job_id);
 		//register each storage file data and set permissions if needed
-		foreach($chunk_jobs as $chunkjob){
+        foreach($chunk_jobs as $chunkjob){
 			//determine the storage file type
 			$sfile_type = $old_sfile['storage_file_type'];
 			if(($old_sfile['storage_file_type'] == 'file')&&(sizeof($chunk_jobs)>1)){
@@ -59,10 +64,10 @@ class ShuffleJobModel extends CI_Model
 			//calculate the new byte offsets, note that the chunk job offsets are not for the whole virtual file
 			//but counting from the original storage file
 			$bstart = $old_sfile['byte_offset_start']+$chunkjob['byte_offset_start'];
-			$bend = $old_sfile['byte_offset_end']+$chunkjob['byte_offset_end'];
+			$bend = $old_sfile['byte_offset_start']+$chunkjob['byte_offset_end'];
 			//generate the new storage file data
 			$storage_file_data = array(
-				'storage_account_id'=>$old_sfile['storage_account_id'],
+				'storage_account_id'=>$chunkjob['target_account'],
 				'virtual_file_id'=>$old_sfile['virtual_file_id'],
 				'storage_file_type'=>$sfile_type,
 				'byte_offset_start'=>$bstart,
@@ -70,11 +75,11 @@ class ShuffleJobModel extends CI_Model
 				'storage_file_size'=>$bend-$bstart+1,
 				'storage_id'=>$chunkjob['uploaded_storage_id']
 			);
-			$this->fileModel->registerStorageFileAndSetPermissionsOnStorage($storage_file_data);
-		}
-		//delete old file from cloud storage and delete old storage file data in our system
+            $this->fileModel->registerStorageFileAndSetPermissionsOnStorage($storage_file_data);
+        }
+        //delete old file from cloud storage and delete old storage file data in our system
 		$this->fileModel->deleteStorageFile($old_sfile['storage_file_id']);
-	}
+    }
 	/*
 		this function writes the shuffle job data from the dispatcher(after it has determined the executors and move
 		job types) to the database.
@@ -136,13 +141,9 @@ class ShuffleJobModel extends CI_Model
 		//replace the fields of storage file id and storage account id with the actual file/account data for client
 		foreach($movejobs as $k=>$movejob){
 			$movejobs[$k]['source_file'] = $this->fileModel->getStorageFile($movejobs[$k]['source_file']);
-			//var_dump('get scheduling info for account: '+$movejob['source_account']);
-			//$s = microtime(true);
 			$movejobs[$k]['source_account'] = $this->storageAccountModel->getClientInfoForStorageAccountId($movejob['source_account']);
 			//set access token data for client
 			$movejobs[$k]['source_account'] = $this->storageAccountModel->setAccessTokenDataForClient($movejobs[$k]['source_account']);
-			//$t = microtime(true);
-			//var_dump($t-$s);
 			$movejob_id = $movejob['move_job_id'];
 			//organize chunks for each movejob
 			$q3 = $this->db->get_where('chunk_job', array('move_job_id'=>$movejob_id));
@@ -166,4 +167,95 @@ class ShuffleJobModel extends CI_Model
 		$shufflejob['server_shuffle_size'] = $total_shuffle_size-$client_shuffle_size;
 		return $shufflejob;
 	}
+    /*
+        takes the output of getShuffleJobData and executes it
+    */
+    public function executeShuffleJob($shuffle_job_data){
+        foreach($shuffle_job_data['move_job'] as $movejob){
+            $this->executeMoveJob($movejob);
+        }
+        //no need to check shuffle job completed here, since the client will do that for us.
+    }
+    public function executeMoveJob($movejob){
+        //for each type of move job, do something different
+        //'download_whole_file_and_distribute_on_server','download_whole_file_and_distribute_on_client','api_copy_and_replace','chunk_level_assign'
+        if($movejob['job_type'] == 'download_whole_file_and_distribute_on_server'){
+            $this->executeDownloadWholeMoveJob($movejob);
+        }else if($movejob['job_type'] == 'api_copy_and_replace'){
+            $this->executeApiCopyAndReplace($movejob);
+        }else if($movejob['job_type'] == 'chunk_level_assign'){
+            $this->executeChunkLevelMoveJob($movejob);
+        }else{
+            throw new Exception("job_type of move job is unrecognisable on server : "+$movejob['job_type']);
+            return;
+        }
+        
+    }
+    public function executeDownloadWholeMoveJob($movejob){
+        $copysize = 1*1024*1024;//1MB for copying files into chunks
+        //stream download file and stream upload to chunk targets
+        $source_fp = $this->cloudStorageModel->downloadFile($movejob['source_account'], $movejob['source_file']);
+        //upload each chunk
+        foreach($movejob['chunk_job'] as $chunkjob){
+            //setup upload chunk file
+            $target_fp = tmpfile();
+            //set the position of the source to the start offset and then copy until end offset
+            $start_offset = $chunkjob['byte_offset_start'];
+            $end_offset = $chunkjob['byte_offset_end'];
+            $total_length = $end_offset - $start_offset + 1;
+            $current_offset = $start_offset;
+            fseek($source_fp, $start_offset);
+            do{
+                $len = $copysize;
+                if($current_offset+$copysize>$end_offset) $len = $end_offset-$current_offset+1;
+                $bytes = fread($source_fp, $len);
+                fwrite($target_fp, $bytes);
+                $current_offset += $len;
+            }while($current_offset<=$end_offset);
+            //upload the target file
+            $storage_id = $this->cloudStorageModel->uploadFile($storage_account, $file_name, $file_mime, $file);
+            
+            //register chunk job completed and update the uploaded storage id
+            $this->registerChunkJobCompleted($chunk_job['chunk_job_id'], $storage_id);
+            //close the target file
+            fclose($target_fp);
+        }
+        //no need to check if move job is completed because this is a whole move job executor
+        //just register completed
+        $this->registerMoveJobCompleted($movejob['move_job_id']);
+        //close source file
+        fclose($source_fp);
+        
+    }
+    public function executeChunkLevelMoveJob($movejob){
+        //for these kinds of jobs, the source account must support partial download.
+        $source_account = $movejob['source_account'];
+        $source_file = $movejob['source_file'];
+        foreach($movejob['chunk_job'] as $chunkjob){
+            $target_account = $chunkjob['target_account'];
+            $source = tmpfile();
+            //download the chunk of the file from the source file
+            $start_offset = $chunkjob['byte_offset_start'];
+            $end_offset = $chunkjob['byte_offset_end'];
+            $size_of_chunk = $end_offset - $start_offset + 1;
+            $this->cloudStorageModel->downloadChunk($source_account, $source_file['storage_id'], $start_offset, $end_offset, $source);
+            //upload the file as a new storage file
+            $storage_id = $this->cloudStorageModel->uploadFile($target_account, $source_file['name'], $source_file['mime_type'], $size_of_chunk, $source);
+            //register chunk job completed
+            $this->registerChunkJobCompleted($chunkjob['chunk_job_id'], $storage_id);
+            //close fp
+            fclose($source);
+        }
+        //check move job completed
+        $this->checkMoveJobCompleted($movejob['move_job_id']);
+    }
+    public function executeApiCopyAndReplace($movejob){
+        $source_account = $movejob['source_account'];
+        $source_file = $movejob['source_file'];
+        $target_account = $movejob['chunk_job'][0]['target_account'];
+        $storage_id = $this->cloudStorageModel->apiCopyFileBetweenAccounts($source_account, $source_file['storage_id'], $target_account);
+        $this->registerChunkJobCompleted($movejob['chunk_job'][0]['chunk_job_id']);
+        $this->registerMoveJobCompleted($movejob['move_job_id']);
+    }
+    
 }

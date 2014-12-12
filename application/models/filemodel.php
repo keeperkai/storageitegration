@@ -91,7 +91,7 @@ class FileModel extends CI_Model
 	*/
 	//--------------end of google section
 	public function getStorageFilesForVirtualFileId($virtual_file_id){
-		$q = $this->db->get_where('storage_file', array());
+		$q = $this->db->get_where('storage_file', array('virtual_file_id'=>$virtual_file_id));
 		$sfiles = $q->result_array();
 		return $sfiles;
 	}
@@ -146,7 +146,10 @@ class FileModel extends CI_Model
             return $this->createLooseFilesFolderForUser($user);
         }
     }
-	private function getChildrenWithoutAccountData($rootdir_file_id){
+    /*
+        returns the array of virtual file entries of a root folder
+    */
+	public function getChildrenVirtualFiles($rootdir_file_id){
         $q = $this->db->get_where('virtual_file', array('parent_virtual_file_id'=>$rootdir_file_id));
         $r = $q->result_array();
         return $r;
@@ -165,7 +168,7 @@ class FileModel extends CI_Model
 	private function getVirtualFileData($virtual_file_id){
 		$q = $this->db->get_where('virtual_file', array('virtual_file_id'=>$virtual_file_id));
 		$r = $q->result_array();
-		if($r>0){
+		if(sizeof($r)>0){
 			return $r[0];
 		}else{
 			return false;
@@ -204,15 +207,8 @@ class FileModel extends CI_Model
 		
 		//get all the users that have any form of permission to the file
 		$permits = $this->getPermissionsForVirtualFile($sfile['virtual_file_id']);
-		$cloudstoragemodel = '';
-		if($acc['token_type']=='googledrive'){
-			$cloudstoragemodel = $this->googleDriveModel;
-			//$this->googleDriveModel->addPermissionForUser($sfile['storage_id'], $acc, $user, $role);
-		}else{//for cloud storages that don't need to write to file permissions beforehand just return
-			return;
-		}
 		foreach($permits as $perm){
-			$cloudstoragemodel->addPermissionForUser($sfile['storage_id'], $acc, $perm['account'], $perm['role']);
+			$this->cloudStorageModel->addPermissionForUser($sfile['storage_id'], $acc, $perm['account'], $perm['role']);
 		}
 	}
 	public function inheritParentPermission($virtual_file_id){
@@ -236,7 +232,7 @@ class FileModel extends CI_Model
 			//add permission for the file
 			$this->addPermissionForSingleFile($virtual_file_id, $user, $role);
 			if($type == 'folder'){//recurse
-				$children = $this->getChildrenWithoutAccountData($virtual_file_id);
+				$children = $this->getChildrenVirtualFiles($virtual_file_id);
 				foreach($children as $child){
 					$this->addPermission($child['virtual_file_id']);
 				}
@@ -317,7 +313,21 @@ class FileModel extends CI_Model
 	public function registerFile($fileData){
         return $this->db->insert('virtual_file',$fileData);
     }
-	
+	public function getVirtualFilesAsArrayForUser($user, $role){
+        $this->db->select('*');
+		$this->db->from('file_permissions');
+		$this->db->join('virtual_file', 'file_permissions.virtual_file_id = virtual_file.virtual_file_id', 'left');
+		$this->db->where(array('file_permissions.account'=>$user, 'file_permissions.role'=>$role));
+		$q = $this->db->get();
+		$r = $q->result_array();
+        return $r;
+	}
+    /*
+        returns an array of virtual files, this includes files that are shared with the user but not owned by the user.
+        we do this by getting the permissions and joining data with the virtual file.
+        the output will organize the data to be usable in the webpage by ztree, letting the id = virtual_file_id +3, note that in the client when we send
+        requests back here to the server, we use the virtual_file_id in the node instead of the id or pId of the ztree node.
+    */
 	public function getVirtualFileTreeForUser($user){
 		$this->db->select('*');
 		$this->db->from('file_permissions');
@@ -411,12 +421,7 @@ class FileModel extends CI_Model
     public function deleteStorageDataForVirtualFile($virtual_file_id){
         $sfiles = $this->getStorageDataForVirtualFile($virtual_file_id);
         foreach($sfiles as $sfile){
-            $provider = $sfile['token_type'];
-            if($provider == 'googledrive'){
-                deleteGoogleDriveStorageFile($sfile['token'], $sfile['storage_id']);
-            }else if($provider == 'onedrive'){
-            
-            }
+            $this->deleteStorageFile($sfile['storage_file_id']);
         }
     }
     public function deleteSingleFile($virtual_file_id){
@@ -439,7 +444,7 @@ class FileModel extends CI_Model
         if(!$vfile) return;
         $filetype = $vfile['file_type'];
         if($filetype == 'folder'){
-            $children = $this->getChildrenWithoutAccountData($vfile['virtual_file_id']);
+            $children = $this->getChildrenVirtualFiles($vfile['virtual_file_id']);
             if($role == 'owner'){
                 //actually delete the folder and register children as a loose file if it is not owned by this user
                 foreach($children as $child_vfile){
@@ -527,7 +532,7 @@ class FileModel extends CI_Model
     }
 	//new system--------------------------------------------------------------------------------------------
     public function deleteDirectory($file){
-        $children = $this->getChildrenWithoutAccountData($file['file_id']);
+        $children = $this->getChildrenVirtualFiles($file['file_id']);
         foreach($children as $child){
             if ($child['type'] == 'dir') {
                 $this->deleteDirectory($child);

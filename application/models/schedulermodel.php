@@ -86,9 +86,12 @@ class SchedulerModel extends CI_Model
 		/*
 		this is called when the source account is chosen
 		this function will try to give a shuffle plan that:
-		(i)if meeting the quota is possible, it will output the plan that has the smallest(as we found with our algo, not optimal) difference between the target quota
+        (i)shuffles whole files( in other words, 'chunks' will all be size of 1)
+		(ii)if meeting the quota is possible, it will output the plan that has the smallest(as we found with our algo, not optimal) difference between the target quota
 		and the total size that have been moved out.
-		(ii)if meeting the quota is not possible, it will output a plan that is as close to the target quota as possible(again, not optimal)
+		(iii)if meeting the quota is not possible, it will output a plan that is as close to the target quota as possible(again, not optimal)
+        Note that there are two variants of this function, one using the account free quota and another using the min_free_quota_single_file_limit, just by adjusting the
+        sort and picking algorithms in this function we can get these two variants, hence the $pickBestFitAccountAlgo and $account_sorting arguments.
 		
 		idea: maybe we can use another function like this, but use 0-1 knapsack and greedy, starting from low free quota target accounts to high free quota accounts
 		but we would need to deal with memory problems, like if there is 300mb of free quota on the target account and 300 source files, we would need a table of
@@ -136,10 +139,12 @@ class SchedulerModel extends CI_Model
 							'source_file'=>$lastfile['storage_file_id'],
 							'source_account'=>$source_account['storage_account_id'], 
 							'chunks'=>array(
-								'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
-								'byte_offset_start'=>0,
-								'byte_offset_end'=>$lastfile['storage_file_size']-1
-							)
+                                array(
+                                    'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
+                                    'byte_offset_start'=>0,
+                                    'byte_offset_end'=>$lastfile['storage_file_size']-1
+                                )
+                            )
 						);
 						//update min account and moved file states
 						$min_cost_account_states = $suitable_accounts;
@@ -157,9 +162,11 @@ class SchedulerModel extends CI_Model
 							'source_account'=>$source_account['storage_account_id'], 
 							//'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id']
 							'chunks'=>array(
-								'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
-								'byte_offset_start'=>0,
-								'byte_offset_end'=>$lastfile['storage_file_size']-1
+                                array(
+                                    'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
+                                    'byte_offset_start'=>0,
+                                    'byte_offset_end'=>$lastfile['storage_file_size']-1
+                                )
 							)
 						);
 						$moved_files[]=$lastfile;
@@ -191,9 +198,11 @@ class SchedulerModel extends CI_Model
 							'source_account'=>$source_account['storage_account_id'], 
 							//'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id']
 							'chunks'=>array(
-								'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
-								'byte_offset_start'=>0,
-								'byte_offset_end'=>$lastfile['storage_file_size']-1
+								array(
+                                    'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
+                                    'byte_offset_start'=>0,
+                                    'byte_offset_end'=>$lastfile['storage_file_size']-1
+                                )
 							)
 						);
 						//update min account and moved file states
@@ -227,9 +236,11 @@ class SchedulerModel extends CI_Model
 						'source_account'=>$source_account['storage_account_id'], 
 						//'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id']
 						'chunks'=>array(
-							'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
-							'byte_offset_start'=>0,
-							'byte_offset_end'=>$sfile['storage_file_size']-1
+                            array(
+                                'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
+                                'byte_offset_start'=>0,
+                                'byte_offset_end'=>$sfile['storage_file_size']-1
+                            )
 						)
 					);
 					//update min account and moved file states
@@ -247,9 +258,11 @@ class SchedulerModel extends CI_Model
 						'source_account'=>$source_account['storage_account_id'], 
 						//'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id']
 						'chunks'=>array(
-							'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
-							'byte_offset_start'=>0,
-							'byte_offset_end'=>$sfile['storage_file_size']-1
+                            array(
+                                'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
+                                'byte_offset_start'=>0,
+                                'byte_offset_end'=>$sfile['storage_file_size']-1
+                            )
 						)
 					);
 					$moved_files[]=$sfile;
@@ -356,16 +369,25 @@ class SchedulerModel extends CI_Model
 		as the base unit of distribution, so for the above the table size can be shrinked to 90M, which is more feasible(but still not okay for one user)
 		*/
 		/*
-		output format: array:
-			'schedule_data'=>array(...)//same as in schedule.
-			'cost'=>total size in bytes, including the target quota
-			'moved_size'=>usually==cost, but for same provider copy and replace, this will be different
-			'moved_source_files'=>the new list of source files left after this operation
-			'modified_account_state'=>an array of accounts that might have been modified(in quota)
-			'quota_met'=> true or false, depending on the target quota being met or not
+		output format: 
+        array(
+            array(
+                'schedule_data'=>array(...)//same as in schedule.
+                'cost'=>total size in bytes, including the target quota
+                'moved_size'=>usually==cost, but for same provider copy and replace, this will be different
+                'moved_source_files'=>the new list of source files left after this operation
+                'modified_account_state'=>an array of accounts that might have been modified(in quota)
+                'quota_met'=> true or false, depending on the target quota being met or not
+            )
+        )
 		*/
 	}
+    /*
+        this function allocates a single storage file as chunks to the $suitable_accounts, note that this variable is passed by reference, meaning it will change the state
+        of the accounts
+    */
 	private function allocateStorageFileAsChunks($sfile, &$suitable_accounts, $source_account){
+        $schedule_data = array();
 		if($sfile['storage_file_size']<=$suitable_accounts[0]['quota_info']['free']){
 			//enough quota, move the whole storage file there
 			$schedule_data[]=array(
@@ -374,9 +396,11 @@ class SchedulerModel extends CI_Model
 				'source_account'=> $source_account['storage_account_id'],
 				//'target_account'=> $suitable_accounts[0]['storage_account_id'],
 				'chunks'=>array(
-					'target_account'=>$suitable_accounts[0]['storage_account_id'],
-					'byte_offset_start'=>0,
-					'byte_offset_end'=>$sfile['storage_file_size']-1
+                    array(
+                        'target_account'=>$suitable_accounts[0]['storage_account_id'],
+                        'byte_offset_start'=>0,
+                        'byte_offset_end'=>$sfile['storage_file_size']-1
+                    )
 				)
 			);
 			//update suitable account data
@@ -419,7 +443,7 @@ class SchedulerModel extends CI_Model
 			$suitable_accounts = $this->updateAccountState($suitable_accounts, $new_acc_states);
 			usort($suitable_accounts, array($this,"freeQuotaCompareHighToLow"));
 			//insert schedule data
-			$schedule_data = array(
+			$schedule_data []= array(
 				//'type'=>'chunked',
 				'source_file'=> $sfile['storage_file_id'],
 				'source_account'=> $source_account['storage_account_id'],
@@ -432,7 +456,7 @@ class SchedulerModel extends CI_Model
 		/*
 		output:
 		an array with the following keys:
-		'shedule_data':
+		'schedule_data':
 		array(
 			'type'=>'chunked',
 			'source_file'=>storage_file_id,
@@ -454,7 +478,7 @@ class SchedulerModel extends CI_Model
 		//we can do this because, these files can be chunked, we can cut them into pieces so as long as the suitable_accounts have enough space
 		//we can find a way to fit the victims into them
 		//and then we allocate the picked victims to the accounts
-		$moved_files = array();
+        $moved_files = array();
 		$schedule_data = array();
 		$cost = 0;
 		$quota_met = false;
@@ -512,6 +536,7 @@ class SchedulerModel extends CI_Model
 			}
 			//for the current set, the quota must not be met yet, add the last file in source_files and see if this yields a lower cost
 			$lastfile = $source_files[sizeof($source_files)-1];
+            
 			if($target_quota>$lastfile['storage_file_size']){//quota can't be met with the current set even with this file
 			//see if there is an answer already, if not, then output this one
 				if($local_min_cost==PHP_INT_MAX){//no solution yet
@@ -561,7 +586,7 @@ class SchedulerModel extends CI_Model
 			}
 			*/
 			foreach($victims as $sfile){
-				$schedule_data []= $this->allocateStorageFileAsChunks($sfile, $suitable_accounts, $source_account);
+				$schedule_data = array_merge($schedule_data, $this->allocateStorageFileAsChunks($sfile, $suitable_accounts, $source_account));
 			}
 			//output
 			return array(
@@ -585,7 +610,7 @@ class SchedulerModel extends CI_Model
 			}
 			$schedule_data = array();
 			foreach($victims as $sfile){
-				$schedule_data []= $this->allocateStorageFileAsChunks($sfile, $suitable_accounts, $source_account);
+				$schedule_data = array_merge($schedule_data, $this->allocateStorageFileAsChunks($sfile, $suitable_accounts, $source_account));
 			}
 			
 			return array(
@@ -629,8 +654,8 @@ class SchedulerModel extends CI_Model
 		return $original;
 	}
 	private function updateSimulationStates($shuffle_result, &$schedule_data, &$cost, &$target_quota, &$other_accounts, &$movable_storage_files){
-		$schedule_data = array_merge($shuffle_result['schedule_data']);
-		$cost += $shuffle_result['cost'];
+		$schedule_data = array_merge($schedule_data, $shuffle_result['schedule_data']);
+        $cost += $shuffle_result['cost'];
 		$target_quota -= $shuffle_result['moved_size'];
 		$other_accounts = $this->updateAccountState($other_accounts, $shuffle_result['modified_account_state']);
 		$movable_storage_files = $this->updateStorageFileState($movable_storage_files, $shuffle_result['moved_source_files']);
@@ -639,7 +664,7 @@ class SchedulerModel extends CI_Model
 		//in this function we will try to shuffle and simulated, take note that the updated data of the accounts will only change the free quota data
 		//the storage files will be inconsistent after these operations
 		//output vars
-		$cost = 0;
+        $cost = 0;
 		$schedule_data = array();
 		//other_accounts: in H->L for free quota
 		$movable_storage_files = $target_account['storage_files'];
@@ -649,7 +674,7 @@ class SchedulerModel extends CI_Model
 		foreach($movable_storage_files as $sfile){
 			$total_movable_bytes += $sfile['storage_file_size'];
 		}
-		if($total_movable_bytes+$target_account['quota_info']['free']<$size){
+        if($total_movable_bytes+$target_account['quota_info']['free']<$size){
 			return false;
 		}
 		//initialize data
@@ -700,7 +725,7 @@ class SchedulerModel extends CI_Model
 			}
 		}
 		$result = $this->chunkedShuffle($other_accounts, $target_account, $chunked_files, $target_quota);
-		$this->updateSimulationStates($result, $schedule_data, $cost, $target_quota, $other_accounts, $movable_storage_files);
+        $this->updateSimulationStates($result, $schedule_data, $cost, $target_quota, $other_accounts, $movable_storage_files);
 		
 		//if completed, output data
 		if($result['quota_met']){
@@ -709,7 +734,7 @@ class SchedulerModel extends CI_Model
 		
 		//if still not completed, start chunking any file
 		$result = $this->chunkedShuffle($other_accounts, $target_account, $movable_storage_files, $target_quota);
-		$this->updateSimulationStates($result, $schedule_data, $cost, $target_quota, $other_accounts, $movable_storage_files);
+        $this->updateSimulationStates($result, $schedule_data, $cost, $target_quota, $other_accounts, $movable_storage_files);
 		//if completed, output data, if not return false
 		if($result['quota_met']){
 			return array('cost'=>$cost, 'schedule_data'=>$schedule_data);
@@ -747,9 +772,8 @@ class SchedulerModel extends CI_Model
 					break;
 				}
 			}
-			$result = $this->smallCostShuffle($other_accounts, $suitable_accounts[$i], $size);//small cost shuffle internal server err
-			//var_dump($result);//cost 0, no schedule data
-			if($result){
+			$result = $this->smallCostShuffle($other_accounts, $suitable_accounts[$i], $size);
+            if($result){
 				if($min_cost>$result['cost']){
 					$min_cost = $result['cost'];
 					$min_schedule = $result['schedule_data'];
@@ -777,23 +801,33 @@ class SchedulerModel extends CI_Model
 				array('type'=>'chunked','target_account'=>, byte_offset_start, byte_offset_end)
 			)
 			'shuffle':
-			array(
-				'source_file'=>storage_file_id,
-				'source_account'=>storage_account_id,
-				'chunks'=>array(
-					array('target_account'=>storage_account_id, byte_offset_start, byte_offset_end),
-					array('target_account'=>storage_account_id, byte_offset_start, byte_offset_end),
-					...
-				)
-			)
+            array(
+                array(
+                    'source_file'=>storage_file_id,
+                    'source_account'=>storage_account_id,
+                    'chunks'=>array(
+                        array('target_account'=>storage_account_id, byte_offset_start, byte_offset_end),
+                        array('target_account'=>storage_account_id, byte_offset_start, byte_offset_end),
+                        ...
+                    )
+                )
+            )
 		)
 		)
 		*/
 		$output = array();
-		//get all the accounts and their info of the current user
+		
+        
+        
+        //get all the accounts and their info of the current user
 		//$accounts = $this->storageAccountModel->getStorageAccountWithSchedulingInfo($user);
-		$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfo($user);
-		//get the setting for this extension
+        //$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfoForceSplit($user, $size);
+        $accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfoForceShuffle($user, $size, 0.8);
+		//$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfo($user);
+		
+        
+        
+        //get the setting for this extension
 		$setting = $this->settingModel->searchSetting($extension, $user);
 		
 		if($setting){//need to save this file as whole, we can remove the accounts that have an api single file size that is smaller than this file
@@ -806,7 +840,6 @@ class SchedulerModel extends CI_Model
 			$accounts_in_priority_order = $accounts;
 			$all_user_accounts_in_free_quota_order = $accounts;
 			usort($all_user_accounts_in_free_quota_order, array($this, "freeQuotaCompareHighToLow"));
-			//var_dump($accounts_in_priority_order);
 			//filter all accounts with providers that have api size limits that are smaller
 			$filtered = array();
 			foreach($accounts_in_priority_order as $key=>$acc){
@@ -814,7 +847,7 @@ class SchedulerModel extends CI_Model
 					$filtered[]=$acc;
 				}
 			}
-			$accounts_in_priority_order = $filtered;
+            $accounts_in_priority_order = $filtered;
 			$filtered = array();
 			foreach($accounts_in_priority_order as $key=>$acc){
 				$acc_provider = $acc['token_type'];
@@ -824,8 +857,8 @@ class SchedulerModel extends CI_Model
 					$filtered [] = $acc;
 				}
 			}
-			$accounts_in_priority_order = $filtered;
-			if(sizeof($accounts_in_priority_order) == 0){
+            $accounts_in_priority_order = $filtered;
+            if(sizeof($accounts_in_priority_order) == 0){
 				//no accounts suitable
 				$output['status'] = 'impossible';
 				$output['errorMessage'] = '你所設定的雲端硬碟類型的單一檔案上傳大小限制比此檔案小，所以無法上傳，請設定 '.$extension.'使用其他種的雲端硬碟';

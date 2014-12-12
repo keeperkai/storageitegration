@@ -45,10 +45,10 @@ class DispatcherModel extends CI_Model
 		return $shuffle_data;
 	}
 	private function organizeShuffleStorageAccountData($shuffle_data){
-		foreach($shuffle_data as $k=>$movejob){
+        foreach($shuffle_data as $k=>$movejob){
 			$shuffle_data[$k]['source_account'] = $this->storageAccountModel->getClientInfoForStorageAccountId($movejob['source_account']);
-			foreach($shuffle_data[$k]['chunks'] as $s=>$chunkjob){
-				$shuffle_data[$k]['chunks'][$s]['target_account'] = $this->storageAccountModel->getClientInfoForStorageAccountId($chunkjob['target_account']);
+        	foreach($shuffle_data[$k]['chunks'] as $s=>$chunkjob){
+        		$shuffle_data[$k]['chunks'][$s]['target_account'] = $this->storageAccountModel->getClientInfoForStorageAccountId($chunkjob['target_account']);
 			}
 		}
 		return $shuffle_data;
@@ -59,7 +59,7 @@ class DispatcherModel extends CI_Model
 		$shuffle_data = $this->organizeShuffleStorageFileData($shuffle_data);
 		$shuffle_data = $this->chunkShuffleDataToFitSingleFileApiLimit($shuffle_data);
 		return $shuffle_data;
-	}
+    }
 	private function determineJobExecuters($shuffle_data){
 		/*
 		this function will determine the job executers(server or client), the unit for assigning is a chunk job
@@ -189,25 +189,17 @@ class DispatcherModel extends CI_Model
 	private function dispatchShuffle($shuffle_data, $user){
 		//first prepare the data for the accounts, and further chunk data if needed
 		//also prepare the data for the whole files, we need their file size to know if we can move them in the client
-		$shuffle_data = $this->organizeShuffleData($shuffle_data);//chunk wrong
-		//second determine who will execute the job
-		//$s = microtime(true);
-		$dispatched_jobs = $this->determineJobExecuters($shuffle_data);
-		//$t = microtime(true);
-		//var_dump($t-$s);
-		//6 secs at first, very little afterwards(sql optimization?)
-		//three write the jobs to the database
+		$shuffle_data = $this->organizeShuffleData($shuffle_data);
+        
+        $dispatched_jobs = $this->determineJobExecuters($shuffle_data);
+		//write the jobs to the database
 		$shuffle_id = $this->shuffleJobModel->writeShuffleJobToDatabase($dispatched_jobs, $user);
-		//0.003xx secs
-		//$s = microtime(true);
-		//four filter the client jobs, and then return the client jobs in the format that the client needs.
+		//filtering the client jobs, and then return the client jobs in the format that the client needs.
 		$shuffle_job = $this->shuffleJobModel->getShuffleJobData($shuffle_id);
-		//$t = microtime(true);
-		//var_dump($t-$s);
 		
-		//6.xx secs
 		
 		return $shuffle_job;
+        
 	}
 	private function organizeUploadStorageAccountData($upload_data){
 		foreach($upload_data as $k=>$job){
@@ -302,7 +294,7 @@ class DispatcherModel extends CI_Model
 		$shuffle_part = array();
 		if($schedule_data['status']=='need_shuffle'){
 			$shuffle_data = $schedule_data['schedule_data']['shuffle'];
-			$shuffle_part = $this->dispatchShuffle($shuffle_data, $user);
+			$shuffle_part = $this->dispatchShuffle($shuffle_data, $user);//this line failing with no warnings
 			$output['schedule_data']['shuffle']=$shuffle_part;
 			$output['schedule_data']['upload']=$upload_part;
 		}else{//status == upload

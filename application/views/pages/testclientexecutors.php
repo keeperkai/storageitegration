@@ -5,12 +5,18 @@ run test!
 <script>
 var accounts = getAccounts();
 function runExecutorTest(){
-	var chunksize = 1024*1024;//4096;
+	var chunksize = 10*1024*1024;//4096;
 	var googleacc = accounts[0];
-	var googlefileid = '0B6FHqPdI70kubU1JdGlRRGptVVE';
-	var googlefilesize = 3241436;
-	var googlefilemimetype = 'application/octet-stream';
-	var googlefilename = 'testmodel.blend';
+	//var googlefileid = '0B6FHqPdI70kubU1JdGlRRGptVVE';//3mb file(.blend file)
+    var googlefileid = '0B6FHqPdI70kucTJ4UjJZVmRMakU';//300mb file(mp4 file)
+    var googlefileid = '0B5RzcMP4KMEsc0JaMGw5YlhUZ0U';//5.xxgb file(mp4 file)
+	//var googlefilesize = 3241436;
+    //var googlefilesize = 294627482;
+    var googlefilesize = 5293561980;
+	//var googlefilemimetype = 'application/octet-stream';
+    var googlefilemimetype = 'video/mp4';
+	//var googlefilename = 'testmodel.blend';
+    var googlefilename = 'whatever.mp4';
 	var onedriveacc = accounts[1];
 	var onedrivefileid = 'file.4acff2ecd6502abe.4ACFF2ECD6502ABE!124';
 	var onedrivefilesize = 10803;
@@ -86,6 +92,7 @@ function runExecutorTest(){
 	}
 	*/
 	//new test case 2: download whole file from onedrive and upload whole to googledrive
+    /*
 	var downloader = new OneDriveDataDownloadExecutor(onedriveacc.token, onedrivefileid);
 	var uploader = new GoogleDriveDataUploadExecutor(onedrivefilename, onedrivefilemimetype, onedriveacc.token, onedrivefilesize);
 	downloader.downloadWhole(function(data){
@@ -94,8 +101,9 @@ function runExecutorTest(){
 		};
 		uploader.uploadWhole(data);
 	});
+    */
 	//testcase3: download a googledrive file in chunks and upload as chunks to google drive
-	/*
+	
 	var downloader = new GoogleDriveDataDownloadExecutor(googleacc.token, googlefileid);
 	var uploader = new GoogleDriveDataUploadExecutor(googlefilename, googlefilemimetype, googleacc.token, googlefilesize);
 	//merge file datas into one blob
@@ -117,7 +125,7 @@ function runExecutorTest(){
 		uploader.uploadChunk(data);
 	}
 	requestchunk();
-	*/
+	
 }
 function getAccounts(){
   var output = [];

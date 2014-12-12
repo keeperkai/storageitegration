@@ -125,7 +125,7 @@ function checkFileGrouping(file){
 function showNoSuitableAccountDialog(msg){
   return confirm(msg);
 }
-function getUploadInstructions(file, chosen_provider){
+function getUploadInstructions(file, callback){
   //convertToDoc = (typeof convertToDoc === "undefined") ? false : convertToDoc;
   //chosen_provider = (typeof chosen_provider === "undefined") ? 'none' : chosen_provider;
   var ext = file.name.substring(file.name.lastIndexOf('.')+1);
@@ -133,11 +133,10 @@ function getUploadInstructions(file, chosen_provider){
   var size = file.size;
   var name = file.name
   
-  var instructions = {};
   $.ajax({
       url: '../../files/getuploadinstructions',
       type: 'POST',
-      async: false,
+      async: true,
       data: {
         'extension': ext,
         'mime': mime,
@@ -147,8 +146,7 @@ function getUploadInstructions(file, chosen_provider){
       //  'chosen_provider':chosen_provider
       },
       success: function(data, textstatus, request) {
-        instructions = data;
-        return instructions;
+        callback(data);
       },
       error: function(xhr, status, error) {
         var err = xhr.responseText;
@@ -259,20 +257,23 @@ function uploadNoneDocumentFile(file){
   //for (iii): just try to find any account with enough size(after shuffling), if there isn't, then tell the user to link a random account.
   //if there isn't then tell them to link one, if there is then just ask for the upload instruction
   //var group = checkFileGrouping(file);//returns group, and highest applicable storage providers
-  var instructions = getUploadInstructions(file);
-	alert('got instructions');
-	/*
-  if(instructions.status=='success'){
-    var result = executeUploadInstructions(instructions);
-  }else if(instructions.status=='no_suitable_account'){
-    var decision = showNoSuitableAccountDialog(instructions.error_message);
-    if(decision){
-      window.location.href = '../../pages/view/manageaccount';
+  var instructions = getUploadInstructions(file, function(instructions){
+    if(instructions.status!='impossible'){
+      var executor = new WholeUploadExecutor(instructions.schedule_data, file, getCurrentRightClickedParentId());
+      executor.complete = function(){
+        resetUploadItems();
+        renderFileSystem();
+      };
+      executor.execute();
+    }else{
+      var decision = showNoSuitableAccountDialog(instructions.errorMessage);
+      if(decision){
+        window.location.href = '../../pages/view/manageaccount';
+      }
+      resetUploadItems();
+      renderFileSystem();
     }
-  }
-  resetUploadItems();
-  renderFileSystem();
-	*/
+  });
 }
 function upload() {
   var reader = new FileReader();

@@ -22,6 +22,22 @@ class Shuffle extends CI_Controller
 		//check if the shuffle job is completed
 		
 	}
+    public function checkMoveJobCompleted(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $move_job_id = $this->input->post('move_job_id');
+        $result = $this->shuffleJobModel->checkMoveJobCompleted($move_job_id);
+        if($result){
+            header('Content-Type: application/json');
+			echo json_encode(array('completed'=>true));
+		}else{
+            header('Content-Type: application/json');
+			echo json_encode(array('completed'=>false));
+		}
+        
+    }
 	public function registerMoveJobCompleted(){
 		if (!$this->session->userdata('ACCOUNT')) {
             header('Location: '.base_url().'index.php/pages/view/login');
@@ -29,7 +45,7 @@ class Shuffle extends CI_Controller
         }
 		$user = $this->session->userdata('ACCOUNT');
 		$move_job_id = $this->input->post('move_job_id');
-		$this->shuffleJobModel->registerMoveJobComplete($move_job_id);
+		$this->shuffleJobModel->registerMoveJobCompleted($move_job_id);
 	}
 	public function executeServerSideShuffle(){
 		if (!$this->session->userdata('ACCOUNT')) {
@@ -39,10 +55,19 @@ class Shuffle extends CI_Controller
 		$user = $this->session->userdata('ACCOUNT');
 		$shuffle_job_id = $this->input->post('shuffle_job_id');
 		//get the shuffle data
+		$shufflejob = $this->getShuffleJobData($shuffle_job_id);
+		//check if this is the owner of the shuffle job
+        if($shufflejob['account'] != $user){
+            header('Content-Type: application/json');
+            echo json_encode(array('status'=>'error', errorMessage=>'你沒有執行該工作的權利!'));
+            return;
+        }
+        //execute the shuffle data for server side
 		
-		//execute the shuffle data for server side
-		
-		//respond
+		//respond to the browser
+        
+        header('Content-Type: applicaton/json');
+        echo json_encode(array('status'=>'success'));
 	}
 	
 }

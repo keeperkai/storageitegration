@@ -7,8 +7,32 @@ class Files extends CI_Controller
         $this->load->model('filemodel', 'fileModel');
         $this->load->model('storageaccountmodel', 'storageAccountModel');
 		$this->load->model('settingmodel', 'settingModel');
+        $this->load->model('cloudstoragemodel', 'cloudStorageModel');
+        
     }
 	//test section------------------------------------------------------------------------------
+    /*
+        this function purges all the virtual files/storage files/storage files on cloud storages
+        Note that this doesn't purge the priority settings of the files and the accounts linked will still be intact.
+    */
+    public function purgeAccountFileData(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        
+        //delete all the permission/virtual file/storage file data that is owned by this user
+        $vfiles = $this->fileModel->getVirtualFileTreeForUser($user);
+        foreach($vfiles as $virtual_file){
+            $this->fileModel->deleteFileWithUserContext($virtual_file['virtual_file_id'], $user);
+        }
+        //delete all the storage files on the cloud storage accounts linked to this account
+        $accounts = $this->storageAccountModel->getStorageAccounts($user);
+        foreach($accounts as $acc){
+            $this->cloudStorageModel->purge($acc);
+        }
+    }
 	public function downloadWholeFileFromChunks(){
 		if (!$this->session->userdata('ACCOUNT')) {
             header('Location: '.base_url().'index.php/pages/view/login');
@@ -67,37 +91,14 @@ class Files extends CI_Controller
         //ini_set('max_execution_time', 0);
 		$this->load->model('schedulermodel','schedulerModel');
 		$this->load->model('dispatchermodel','dispatcherModel');
-		//$s = microtime(true);
-		$schedule_data = $this->schedulerModel->schedule($user, $name, $size, $extension);//0.04 secs
-		/*
-		$t = microtime(true);
-		var_dump($t-$s);
-		$s = microtime(true);
-		*/
-		$upload_plan = $this->dispatcherModel->dispatch($schedule_data, $user);//3 secs
-		/*
-		$t = microtime(true);
-		var_dump($t-$s);
-		*/
 		
-		/*
-		$response = array('status'=>'', 'errorMessage'=>'', 'client_jobs'=>array());//status:need_shuffle, upload, impossible, errorMessage: tell the user what kind of account to link
-		if($upload_plan['status'] == 'upload' || $upload_plan['status'] == 'need_shuffle'){
-			$client_jobs = $this->dispatcherModel->dispatch($upload_plan);
-			$response['status'] = $upload_plan['status'];
-			$response['client_jobs'] = $client_jobs;
-			if($upload_plan['status'] == 'need_shuffle'){
-				$response['shuffle_data_size'] = $upload_plan['shuffle_data_size'];
-			}
-		}else{
-			$error = $upload_plan['errorMessage'];
-			$response['status'] = 'impossible';
-		}
-		*/
-		header('Content-Type: application/json');
-		//echo json_encode(array('message'=>'schedule problem!'));
+        $schedule_data = $this->schedulerModel->schedule($user, $name, $size, $extension);//0.04 secs
+        $upload_plan = $this->dispatcherModel->dispatch($schedule_data, $user);//this line
+		
+        
+        header('Content-Type: application/json');
 		echo json_encode($upload_plan);
-		//echo json_encode($response);
+        
 		
     }
 	
@@ -120,20 +121,27 @@ class Files extends CI_Controller
 		$fileData = array();
 		$fileData['account'] = $user;
 		$fileData['file_type'] = $this->input->post('file_type');
+        $fileData['mime_type'] = $this->input->post('mime_type');
 		$fileData['name'] = $this->input->post('name');
 		$fileData['extension'] = $this->input->post('extension');
 		$fileData['parent_virtual_file_id'] = $this->input->post('parent_virtual_file_id');
-		$fileData['allow_chunk'] = $this->settingModel->chunkAllowedForExtension($user, $filedata['extension']);
+		$allow_chunk = $this->settingModel->chunkAllowedForExtension($user, $fileData['extension']);
+        
 		$storage_file_data = json_decode($this->input->post('storage_file_data'), true);
+        if(sizeof($storage_file_data)>1)    $allow_chunk = true;//if the file is already chunked, it doesn't matter what extension it is
+        $fileData['allow_chunk'] = $allow_chunk;
+        
 		/*
 		structure for storage_file_data:
-		array(
-			storage_account_id
-			storage_file_type
-			byte_offset_start
-			byte_offset_end
-			storage_id
-		)
+        array(
+            array(
+                storage_account_id
+                storage_file_type
+                byte_offset_start
+                byte_offset_end
+                storage_id
+            )
+        )
 		*/
 		//var_dump($storage_file_data);
 		$resp = array();

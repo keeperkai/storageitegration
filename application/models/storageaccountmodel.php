@@ -40,6 +40,64 @@ class StorageAccountModel extends CI_Model
 		$q = $this->db->get_where('storage_file', array('storage_account_id'=>$storage_account_id));
 		return $q->result_array();
 	}
+    /*
+        fake free quota, make them really really low to force the scheduler to split unregistered upload file,
+        this function will return free quota for each account that is the average of the size of the file, for instance:
+        the file is 40mb and the user owns 4 accounts, it will return 10mb of free quota for each account, make sure each account has
+        enough space when testing( > 10mb in this case)
+    */
+    public function getStorageAccountWithTestingSchedulingInfoForceSplit($user, $filesize){
+        $accounts = $this->getStorageAccounts($user);
+		$average_fake_free_quota = ceil($filesize/sizeof($accounts));
+		foreach($accounts as $key=>$acc){
+			$storage_files = $this->getStorageFilesForAccount($acc['storage_account_id']);
+			$used = 0;
+			foreach($storage_files as $sfile){
+				$used += $sfile['storage_file_size'];
+			}
+			$total = 0;
+			$total = $used+$average_fake_free_quota;
+            $accounts[$key]['quota_info'] = array(
+				'total'=>$total,
+				'free'=>$average_fake_free_quota,
+				'used'=>$used
+			);
+			//var_dump($accounts[$key]['quota_info']);
+			$accounts[$key]['api_single_file_limit'] = $this->getApiSingleFileLimit($acc['token_type']);
+			$accounts[$key]['min_free_quota_single_file_limit'] = min($accounts[$key]['quota_info']['free'], $accounts[$key]['api_single_file_limit']);
+		}
+		return $accounts;
+    }
+    /*
+    
+        fake free quota for storage accounts to force the scheduler to shuffle data for a registered file,
+        it will set the free quota for all the accounts to the size of the file times a ratio( smaller than 1), so no account has free quota big enough to
+        fit the whole file at first.
+        This will trigger the scheduler to shuffle files that were already in the target account.
+        MAKE SURE THERE ARE UNREGISTERED FILES IN TOTAL OF THE FILESIZE*(1-RATIO) FOR AT LEAST ONE OF THE ACCOUNTS
+    */
+    public function getStorageAccountWithTestingSchedulingInfoForceShuffle($user, $filesize, $ratio){
+        $accounts = $this->getStorageAccounts($user);
+		$fake_free_quota = ceil($ratio*$filesize);
+		foreach($accounts as $key=>$acc){
+			$storage_files = $this->getStorageFilesForAccount($acc['storage_account_id']);
+			$used = 0;
+			foreach($storage_files as $sfile){
+				$used += $sfile['storage_file_size'];
+			}
+			$total = $used+$fake_free_quota;
+			
+			$accounts[$key]['quota_info'] = array(
+				'total'=>$total,
+				'free'=>$fake_free_quota,
+				'used'=>$used
+			);
+			//var_dump($accounts[$key]['quota_info']);
+			$accounts[$key]['api_single_file_limit'] = $this->getApiSingleFileLimit($acc['token_type']);
+			$accounts[$key]['min_free_quota_single_file_limit'] = min($accounts[$key]['quota_info']['free'], $accounts[$key]['api_single_file_limit']);
+		}
+		return $accounts;
+    }
 	public function getStorageAccountWithTestingSchedulingInfo($user){
 		$accounts = $this->getStorageAccounts($user);
 		
