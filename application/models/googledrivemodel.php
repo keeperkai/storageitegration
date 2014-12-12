@@ -37,7 +37,7 @@ class GoogleDriveModel extends CI_Model
 	}
 	public function getAccessToken($storage_account){
 		//get the access token's string, not the whole datastruct
-		$client = $this->setupGoogleClient($refreshToken);
+		$client = $this->setupGoogleClient($storage_account);
 		$token_struct = json_decode($client->getAccessToken(), true);
 		$token = $token_struct['access_token'];
 		return $token;
@@ -207,6 +207,7 @@ class GoogleDriveModel extends CI_Model
         }
         // Reset to the client to execute requests immediately in the future.
         $client->setDefer(false);
+        rewind($file);
         return $result['id'];
     }
     /*
@@ -223,7 +224,20 @@ class GoogleDriveModel extends CI_Model
         the handle to the file resource that has been downloaded, with the position set back to 0
     */
     public function downloadFile($storage_account, $storage_id, $file){
+        $client = $this->setupGoogleClient($storage_account);
+        $drive = $this->setupDriveService($client);
+        $google_api_file = $drive->files->get($storage_id);
+        $dl_link = $google_api_file->getDownloadUrl();
         
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $dl_link);
+        curl_setopt($ch, CURLOPT_FILE, $file);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+                'Authorization: Bearer '.$this->getAccessToken($storage_account),
+                'Connection: close'
+            )
+        );
     }
     /*
         this function downloads a part of a storage file to our server, the byte offsets are specified by $start_offset and $end_offset(inclusive),

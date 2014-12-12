@@ -268,15 +268,9 @@ class OneDriveModel extends CI_Model
             )
         );
         
-        //curl_setopt($ch, CURLOPT_VERBOSE, true);
-        //$verbose = tmpfile();
-        //curl_setopt($ch, CURLOPT_STDERR, $verbose);
-
-        
         $result = curl_exec($ch);
         $result = json_decode($result, true);
         return $result['id'];
-        //return 'whatever';
     }
     /*
         download a storage file on the server and stream it to hard drive
@@ -292,7 +286,17 @@ class OneDriveModel extends CI_Model
         the handle to the file resource that has been downloaded, with the position set back to 0
     */
     public function downloadFile($storage_account, $storage_id, $file){
-
+        //GET https://apis.live.net/v5.0/file.a6b2a7e8f2515e5e.A6B2A7E8F2515E5E!126/content?access_token=ACCESS_TOKEN&download=true
+        $dl_link = 'https://apis.live.net/v5.0/'.$storage_id.'/content?access_token='.$this->getAccessToken().'&download=true';
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $dl_link);
+        curl_setopt($ch, CURLOPT_FILE, $file);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+                'Authorization: Bearer '.$this->getAccessToken($storage_account),
+                'Connection: close'
+            )
+        );
     }
     /*
         this function downloads a part of a storage file to our server, the byte offsets are specified by $start_offset and $end_offset(inclusive),

@@ -91,7 +91,8 @@ class CloudStorageModel extends CI_Model
     /*
         upload a file from our server hard drive to a cloud storage provider
         
-        file: the file pointer to the file, note that this fp will NOT be closed after this operation.
+        file: the file pointer to the file, note that this fp will NOT be closed after this operation. But for unification's sake,
+        we should rewind it.(because the curl's curlopt_infile does this)
         
         returns:
         the id of the file on the storage provider
@@ -123,7 +124,12 @@ class CloudStorageModel extends CI_Model
     */
     public function downloadChunk($storage_account, $storage_id, $start_offset, $end_offset, $file){
         $cs_model = $this->getCloudStorageModel($storage_account['token_type']);
-        return $cs_model->downloadChunk($storage_account, $storage_id, $start_offset, $end_offset, $file);
+        if(method_exists ( $cs_model , 'downloadChunk')){
+            return $cs_model->downloadChunk($storage_account, $storage_id, $start_offset, $end_offset, $file);
+        }else{
+            throw new Exception('trying to call downloadChunk on a cloud storage model that does not support range header');
+        }
+        return false;
     }
     /*
         copies a file from $source_account to $target_account on the storage provider, so we don't need to actually transfer the data.
@@ -135,5 +141,6 @@ class CloudStorageModel extends CI_Model
 		}else{
             throw new Exception('Trying to copy between accounts:'.PHP_EOL.var_export($source_account, true).PHP_EOL.PHP_EOL.var_export($target_account, true).PHP_EOL.'But the method is not supported in the cloud storage model');
         }
+        return false;
     }
 }
