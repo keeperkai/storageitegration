@@ -97,7 +97,9 @@ class GoogleDriveModel extends CI_Model
 		$permission_id_list = $this->getPermissionIds($user);
 		//see if the file already has a permission for that user on google
 		foreach($permission_id_list as $uid){
-			$existing_perm = false;
+			$this->addPermissionForUserIdOnProvider($uid, $storage_id, $storage_account, $role);
+            /*
+            $existing_perm = false;
 			foreach($permits as $fperm){
 				if($fperm['id']==$uid){
 					$existing_perm = $fperm;
@@ -118,8 +120,42 @@ class GoogleDriveModel extends CI_Model
 				$newPermission->setRole($role);
 				$service->permissions->insert($sfile['storage_id'], $newPermission);
 			}
+            */
 		}
 	}
+    /*
+        adds the permissions to a file for aN account ON THE STORAGE PROVIDER,
+        $storage_account is the account that currently has the owner privileges to the file.
+    */
+    public function addPermissionForUserIdOnProvider($user_id, $storage_id, $storage_account, $role){
+        if($role == 'owner') $role = 'writer';//because for a user that has owner level privilege, the other accounts of his should only have writer access
+        //we do not need to worry about the original file uploading account because the owner is already set.
+        $client = $this->setupGoogleClient($storage_account);
+		$service = $this->setupDriveService($client);
+		$permissions = $service->permissions->listPermissions($storage_id);
+		$permits = $permissions->getItems();
+        $existing_perm = false;
+        foreach($permits as $fperm){
+            if($fperm['id']==$user_id){
+                $existing_perm = $fperm;
+                break;
+            }
+        }
+        //update existing perm or insert a new one
+        if($existing_perm){//update
+            if($this->fileModel->roleCompare($role, $existing_perm['role'])>0){
+                $permission = $service->permissions->get($storage_id, $user_id);
+                $permission->setRole($role);
+                $service->permissions->update($storage_id, $user_id, $permission);
+            }
+        }else{//insert new one
+            $newPermission = new Google_Service_Drive_Permission();
+            $newPermission->setId($user_id);
+            $newPermission->setType('user');
+            $newPermission->setRole($role);
+            $service->permissions->insert($storage_id, $newPermission);
+        }
+    }
 	private function getPermissionIds($user){
 		$q = $this->db->get_where('storage_account', array('account'=>$user, 'token_type'=>'googledrive'));
 		$r = $q->result_array();
@@ -167,6 +203,49 @@ class GoogleDriveModel extends CI_Model
     
     
     //Shuffle related / upload/download/copy files------------
+    
+    //direct upload without using hard drive
+    public function uploadFileData($storage_account, $file_name, $file_mime, $file_size, $data){
+        $client = $this->setupGoogleClient($storage_account);
+        $service = $this->setupDriveService($client);
+        
+        
+        $google_api_file = new Google_Service_Drive_DriveFile();
+        $google_api_file->title = $file_name;
+        $chunkSizeBytes = 1 * 1024 * 1024;
+
+        // Call the API with the media upload, defer so it doesn't immediately return.
+        $client->setDefer(true);
+        $request = $service->files->insert($google_api_file);
+
+        // Create a media file upload to represent our upload process.
+        $media = new Google_Http_MediaFileUpload(
+          $client,
+          $request,
+          $file_mime,
+          null,
+          true,
+          $chunkSizeBytes
+        );
+        $media->setFileSize($file_size);
+
+        $status = false;
+        
+        
+          $status = $media->nextChunk($data);
+          
+        
+
+        // The final value of $status will be the data from the API for the object
+        // that has been uploaded.
+        $result = false;
+        if($status != false) {
+          $result = $status;
+        }
+        // Reset to the client to execute requests immediately in the future.
+        $client->setDefer(false);
+        return $result['id'];
+    }
     public function uploadFile($storage_account, $file_name, $file_mime, $file_size, $file){
         $client = $this->setupGoogleClient($storage_account);
         $service = $this->setupDriveService($client);
@@ -194,10 +273,26 @@ class GoogleDriveModel extends CI_Model
         // Upload the various chunks. $status will be false until the process is
         // complete.
         $status = false;
+        //var_dump('uploading for '.$file_name.' :'.PHP_EOL);
+        //var_dump('file pointer is at: '.ftell($file));
+        
+        /*
+        fseek($file, 0, SEEK_END);
+        var_dump('file resource size: '.ftell($file));
+        rewind($file);
+        */
+        
+        //rewind($file);//for some reason, we need to rewind the file handle even if it's position is at 0
+        //var_dump('file pointer is at: '.ftell($file));
+        
+        
         while (!$status && !feof($file)) {
           $chunk = fread($file, $chunkSizeBytes);
           $status = $media->nextChunk($chunk);
-         }
+          //var_dump(strlen($chunk));
+          //var_dump(feof($file));
+          
+        }
 
         // The final value of $status will be the data from the API for the object
         // that has been uploaded.
@@ -208,7 +303,29 @@ class GoogleDriveModel extends CI_Model
         // Reset to the client to execute requests immediately in the future.
         $client->setDefer(false);
         rewind($file);
+        //var_dump($result);
         return $result['id'];
+    }
+    //this function directly downloads file data into memory without going into hard drive
+    public function downloadFileData($storage_account, $storage_id){
+        $client = $this->setupGoogleClient($storage_account);
+        $drive = $this->setupDriveService($client);
+        $google_api_file = $drive->files->get($storage_id);
+        $dl_link = $google_api_file->getDownloadUrl();
+        
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $dl_link);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+                'Authorization: Bearer '.$this->getAccessToken($storage_account),
+                'Connection: close'
+            )
+        );
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        
+        $result = curl_exec($ch);
+        curl_close($ch);
+        return $result;
     }
     /*
         download a storage file on the server and stream it to hard drive
@@ -238,18 +355,77 @@ class GoogleDriveModel extends CI_Model
                 'Connection: close'
             )
         );
+        curl_exec($ch);
+        curl_close($ch);
+        rewind($file);//it seems that for w+/r+ files between reading and writing you need to rewind for some reason
+        //see http://php.net/manual/en/function.fflush.php
+        
+        //testing downloaded file resource
+        /*
+        $testdata = fread($file, 50);
+        var_dump('download testing, read 50 bytes: ');
+        var_dump($testdata);
+        var_dump('after read, position at'.ftell($file));
+        rewind($file);
+        $testdata = fread($file, 50);
+        var_dump('download testing after rewinding, read 50 bytes: ');
+        var_dump($testdata);
+        var_dump('after read, position at'.ftell($file));
+        //the result is the first section will result in a 0 byte read
+        //after the rewind the read will succeed with 50 bytes read.
+        */
+        
     }
     /*
         this function downloads a part of a storage file to our server, the byte offsets are specified by $start_offset and $end_offset(inclusive),
         the function writes to the $file resource and returns a reference to it.
     */
     public function downloadChunk($storage_account, $storage_id, $start_offset, $end_offset, $file){
+        $client = $this->setupGoogleClient($storage_account);
+        $drive = $this->setupDriveService($client);
+        $google_api_file = $drive->files->get($storage_id);
+        $dl_link = $google_api_file->getDownloadUrl();
         
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $dl_link);
+        curl_setopt($ch, CURLOPT_FILE, $file);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+                'Authorization: Bearer '.$this->getAccessToken($storage_account),
+                'Connection: close',
+                'Range: bytes='.$start_offset.'-'.$end_offset
+            )
+        );
+        curl_exec($ch);
+        curl_close($ch);
+        rewind($file);//it seems that for w+/r+ files between reading and writing you need to rewind for some reason
+        //see http://php.net/manual/en/function.fflush.php
     }
     /*
-        copies a file from $source_account to $target_account on the storage provider through api calls, so we don't need to actually transfer the data.
-    */
-    public function apiCopyFileBetweenAccounts($source_account, $storage_id, $target_account){
+        copies a file using $target_account on the storage provider through api calls, so we don't need to actually transfer the data.
+        note that this can be called with another account, so we can transfer data between accounts.
         
+        Note: make sure the target_account has the permissions to the file before calling this.
+    */
+    public function apiCopyFile($storage_id, $target_account){
+        $client = $this->setupGoogleClient($target_account);
+        $drive = $this->setupDriveService($client);
+        $source_file = $drive->files->get($storage_id);
+        
+        $copiedFile = new Google_Service_Drive_DriveFile();
+        $copiedFile->setTitle($source_file->getTitle());
+        $result = array();
+        try {
+            //$s = microtime(true);
+            $result = $drive->files->copy($storage_id, $copiedFile);//result is a Google_Service_Drive_DriveFile
+            //$t = microtime(true);
+            //echo 'copy request: '.($t-$s).'   '.PHP_EOL;//takes 2s~4s...maybe we should use curl multi exec...
+        } catch (Exception $e) {
+        print "An error occurred: " . $e->getMessage();
+        }
+        if($result){
+            return $result->getId();
+        }
+        return NULL;
     }
 }

@@ -413,7 +413,9 @@ $config['provider_info'] = array(
 		'api_single_file_limit'=>5497558138880,
 		'copy_and_replace_support'=>true,
 		'cors_download_range_header_support'=>true,
-		'cors_download_support'=>true
+		'cors_download_support'=>true,
+        
+        'permission_model'=>'set'
     ),
     'onedrive'=>array(
         'extension_capability_map'=>array(
@@ -447,7 +449,9 @@ $config['provider_info'] = array(
 		'api_single_file_limit'=>104857599,
 		'copy_and_replace_support'=>false,
 		'cors_download_range_header_support'=>false,
-		'cors_download_support'=>false
+		'cors_download_support'=>false,
+        
+        'permission_model'=>'link'
     ),
     
 );

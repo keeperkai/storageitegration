@@ -253,14 +253,22 @@ class OneDriveModel extends CI_Model
         //
         //Hello, World!
         $ch = curl_init();
-        
+        /*
+        echo 'uploading file for onedrive : '.$file_name.'    ';
+        echo 'file_size: '.$file_size.'    ';
+        fseek($file, 0, SEEK_END);
+        echo 'file resource size: '.ftell($file).'  ';//165 wtf?
+        if(ftell($file)< 200){
+            rewind($file);
+            echo '  content of file resource: '.stream_get_contents($file).'    ';
+        }
+        rewind($file);
+        */
         curl_setopt($ch, CURLOPT_URL, $upload_url.$file_name.'?access_token='.$this->getAccessToken($storage_account));
         curl_setopt($ch, CURLOPT_PUT, true);
         curl_setopt($ch, CURLOPT_INFILE, $file);
-        curl_setopt($ch, CURLOPT_INFILESIZE, $file_size);
+        curl_setopt($ch, CURLOPT_INFILESIZE, $file_size);//if this causes a block, it might be because there was an error for the previous call to onedrive api for $file
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        
-        
         
         curl_setopt($ch, CURLOPT_HTTPHEADER, array(
             'Connection: close',
@@ -270,6 +278,8 @@ class OneDriveModel extends CI_Model
         
         $result = curl_exec($ch);
         $result = json_decode($result, true);
+        curl_close($ch);
+        rewind($file);
         return $result['id'];
     }
     /*
@@ -287,29 +297,51 @@ class OneDriveModel extends CI_Model
     */
     public function downloadFile($storage_account, $storage_id, $file){
         //GET https://apis.live.net/v5.0/file.a6b2a7e8f2515e5e.A6B2A7E8F2515E5E!126/content?access_token=ACCESS_TOKEN&download=true
-        $dl_link = 'https://apis.live.net/v5.0/'.$storage_id.'/content?access_token='.$this->getAccessToken().'&download=true';
+        $dl_link = 'https://apis.live.net/v5.0/'.$storage_id.'/content?access_token='.$this->getAccessToken($storage_account).'&download=true';
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $dl_link);
         curl_setopt($ch, CURLOPT_FILE, $file);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-                'Authorization: Bearer '.$this->getAccessToken($storage_account),
                 'Connection: close'
             )
         );
+        $result = curl_exec($ch);
+        $result = json_decode($result, true);
+        curl_close($ch);
+        rewind($file);
+        return $result['id'];
+        
     }
     /*
         this function downloads a part of a storage file to our server, the byte offsets are specified by $start_offset and $end_offset(inclusive),
         the function writes to the $file resource and returns a reference to it.
     */
     public function downloadChunk($storage_account, $storage_id, $start_offset, $end_offset, $file){
-
+        $dl_link = 'https://apis.live.net/v5.0/'.$storage_id.'/content?access_token='.$this->getAccessToken($storage_account).'&download=true';
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $dl_link);
+        curl_setopt($ch, CURLOPT_FILE, $file);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+                'Connection: close',
+                'Range: bytes='.$start_offset.'-'.$end_offset
+            )
+        );
+        $result = curl_exec($ch);
+        $result = json_decode($result, true);
+        curl_close($ch);
+        rewind($file);
+        return $result['id'];
     }
     /*
         copies a file from $source_account to $target_account on the storage provider through api calls, so we don't need to actually transfer the data.
+        onedrive does not allow copying files between accounts.
     */
+    /*
     public function apiCopyFileBetweenAccounts($source_account, $storage_id, $target_account){
-
+        
     }
+    */
 
 }

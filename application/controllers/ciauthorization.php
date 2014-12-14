@@ -4,6 +4,9 @@ class CIAuthorization extends CI_Controller
     public function __construct()
     {
         parent::__construct();
+        $this->load->model('filemodel','fileModel');
+        $this->load->model('storageaccountmodel','storageAccountModel');
+        $this->load->model('cloudstoragemodel','storageAccountModel');
     }
     public function connectSkydriveAccount(){
         $client_id = '0000000048127A68';
@@ -111,7 +114,7 @@ class CIAuthorization extends CI_Controller
 		//echo "access_token length: ".strlen($access_token).", refresh_token length:".strlen($refresh_token).PHP_EOL;
 		header("Location: ".base_url()."index.php/pages/view/manageaccount");
 	}
-    public function code(){
+    public function code(){//code for google drive accounts
         $code = $this->input->get('code');
         header("Content-type: text/plain");
         require_once 'Google/Client.php';
@@ -154,6 +157,47 @@ class CIAuthorization extends CI_Controller
 			'time_stamp'=>$curr_timestamp->format('Y-m-d H:i:s')
         );
         $this->db->insert('storage_account', $dbdata);
+        
+        
+        //Propagate the permissions for the files that this account has access to on our platform
+        //1. files on the same provider owned by this user
+        //2. files on the same provider shared with this user
+        
+        //or find all permissions and get all files this user has access to.
+        //for each virtual file, find the storage files that need to be permitted(according to storage provider of storage account)
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $this->addPermissionsForNewAccountOnProvider('googledrive', $user, $permission_id->getId());
         header("Location: ".base_url()."index.php/pages/view/manageaccount");
+    }
+    private function addPermissionsForNewAccountOnProvider($provider, $user, $new_account_id){
+        //or find all permissions and get all files this user has access to.
+        //for each virtual file, find the storage files that need to be permitted(according to storage provider of storage account)
+        
+        $vfiles = $this->fileModel->getVirtualFilesForUserWithAccessGreaterEqualThan($user, 'reader');
+        //echo 'virtual file count: ';
+        //var_dump(sizeof($vfiles));
+        foreach($vfiles as $vfile){
+            //echo 'processing vfile: ';
+            //var_dump($vfile);
+            if($vfile['file_type'] == 'file'){
+                $sfiles = $this->fileModel->getStorageFilesForVirtualFileId($vfile['virtual_file_id']);
+                //echo 'got storage files for virtual files, size: ';
+                //var_dump(sizeof($sfiles));
+                foreach($sfiles as $sfile){
+                    //echo 'processing sfile: ';
+                    //var_dump($sfile);
+                    $storage_account = $this->storageAccountModel->getStorageAccountWithId($sfile['storage_account_id']);//this is the storage account of the user.
+                    if($storage_account['token_type'] == $provider){
+                        //echo 'calling add permission';
+                        $this->cloudStorageModel->addPermissionForUser($sfile['storage_id'], $storage_account, $user, $vfile['role']);
+                        //$this->cloudStorageModel->addPermissionForUserIdOnProvider($new_account_id, $sfile['storage_id'], $storage_account, $vfile['role']);
+                    }
+                }
+            }
+        }
     }
 }

@@ -214,5 +214,15 @@ class StorageAccountModel extends CI_Model
 		}
 		return $access_token;
 	}
-	
+	/*
+    
+        determines the permission model of this storage account.
+        so far there are 'set' and 'link', 'set' means the file permissions needs to be set to the accounts, such as googledrive.
+        'link' means the api only supports file sharing through links, the api does not allow us to set the permissions ourselves.
+    */
+    public function getPermissionModel($storage_account_data){
+        $provider_info = $this->config->item('provider_info');
+        $provider = $storage_account_data['token_type'];
+        return $provider_info[$provider]['permission_model'];
+    }
 }

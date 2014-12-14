@@ -53,6 +53,7 @@ class CloudStorageModel extends CI_Model
 		$cs_model = $this->getCloudStorageModel($storage_account['token_type']);
 		$cs_model->deleteStorageFile($storage_id, $storage_account);
 	}
+    //functions that MUST BE SUPPORTED by 'set' type permission_model providers.-----------------------------------------------------
 	/*
 		adds the permissions for a user to access a storage file on the cloud storage if needed.
 		(googledrive files needs this, but for storages like onedrive that share through a link, we don't need to do anything)
@@ -63,6 +64,17 @@ class CloudStorageModel extends CI_Model
 			$cs_model->addPermissionForUser($storage_id, $storage_account, $user, $role);
 		}
 	}
+    /*
+        adds the permissions to a file for aN account ON THE STORAGE PROVIDER,
+        $storage_account is the account that currently has the owner privileges to the file.
+    */
+    public function addPermissionForUserIdOnProvider($user_id, $storage_id, $storage_account, $role){
+        $cs_model = $this->getCloudStorageModel($storage_account['token_type']);
+		if(method_exists ( $cs_model , 'addPermissionForUserIdOnProvider')){
+			$cs_model->addPermissionForUserIdOnProvider($user_id, $storage_id, $storage_account, $role);
+		}
+    }
+    //end of 'set' type-----------------------------------------------------------------------------------------------------------------
     /*
         NOT SUPPORTED YET
         list all files on that cloud storage account(even if the file is not registered on our system)
@@ -133,11 +145,13 @@ class CloudStorageModel extends CI_Model
     }
     /*
         copies a file from $source_account to $target_account on the storage provider, so we don't need to actually transfer the data.
+        
+        returns: the file id of the new replica file.
     */
-    public function apiCopyFileBetweenAccounts($source_account, $storage_id, $target_account){
-        $cs_model = $this->getCloudStorageModel($source_account['token_type']);
-		if(method_exists ( $cs_model , 'apiCopyFileBetweenAccounts')){
-			$cs_model->apiCopyFileBetweenAccounts($source_account, $storage_id, $target_account);
+    public function apiCopyFile($storage_id, $target_account){
+        $cs_model = $this->getCloudStorageModel($target_account['token_type']);
+		if(method_exists ( $cs_model , 'apiCopyFile')){
+			return $cs_model->apiCopyFile($storage_id, $target_account);
 		}else{
             throw new Exception('Trying to copy between accounts:'.PHP_EOL.var_export($source_account, true).PHP_EOL.PHP_EOL.var_export($target_account, true).PHP_EOL.'But the method is not supported in the cloud storage model');
         }

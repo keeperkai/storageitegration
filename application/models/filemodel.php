@@ -313,6 +313,21 @@ class FileModel extends CI_Model
 	public function registerFile($fileData){
         return $this->db->insert('virtual_file',$fileData);
     }
+    public function getVirtualFilesForUserWithAccessGreaterEqualThan($user, $role){
+        $output = array();
+        if($this->roleCompare($role,'owner')<=0){
+            $output = array_merge($output, $this->getVirtualFilesAsArrayForUser($user, 'owner'));
+        }
+        
+        if($this->roleCompare($role,'writer')<=0){
+            $output = array_merge($output, $this->getVirtualFilesAsArrayForUser($user, 'writer'));
+        }
+        
+        if($this->roleCompare($role,'reader')<=0){
+            $output = array_merge($output, $this->getVirtualFilesAsArrayForUser($user, 'reader'));
+        }
+        return $output;
+    }
 	public function getVirtualFilesAsArrayForUser($user, $role){
         $this->db->select('*');
 		$this->db->from('file_permissions');
