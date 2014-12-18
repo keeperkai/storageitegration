@@ -10,13 +10,17 @@ class CloudStorageModel extends CI_Model
         parent::__construct();
 		$this->load->model('googledrivemodel', 'googleDriveModel');
 		$this->load->model('onedrivemodel', 'oneDriveModel');
+        $this->load->model('dropboxmodel', 'dropboxModel');
     }
 	public function getCloudStorageModel($provider){
 		if($provider == 'googledrive'){
 			return $this->googleDriveModel;
 		}else if($provider == 'onedrive'){
 			return $this->oneDriveModel;
-		}
+		}else if($provider == 'dropbox'){
+            return $this->dropboxModel;
+        }
+        return false;
 	}
     public function getAccountQuotaInfo($storage_account){
 	    //gets the quota info of an account

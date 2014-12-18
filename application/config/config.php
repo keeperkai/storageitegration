@@ -14,7 +14,7 @@
 | path to your installation.
 |
 */
-$config['base_url']	= 'http://storageintegration.twbbs.org/';
+$config['base_url']	= 'https://storageintegration.twbbs.org/';
 
 /*
 |--------------------------------------------------------------------------

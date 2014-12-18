@@ -9,7 +9,7 @@ class OneDriveModel extends CI_Model
 		$refresh_token = $storage_account['token'];
 		$onedrive_client_id = '0000000048127A68';
 		$onedrive_client_secret = 'MTuhJU2dIGjqndPvzc8PZwKztnuLQ6d6';
-		$onedrive_redirect_uri = 'http://storageintegration.twbbs.org/index.php/ciauthorization/onedrivecode';
+		$onedrive_redirect_uri = 'https://storageintegration.twbbs.org/index.php/ciauthorization/onedrivecode';
 		$body = array(
 				'client_id'=>$onedrive_client_id,
 				'redirect_uri'=>$onedrive_redirect_uri,

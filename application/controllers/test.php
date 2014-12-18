@@ -201,4 +201,35 @@ class Test extends CI_Controller
         fclose($img);
         echo json_encode($output);
     }
+    public function testDropboxGetQuotaInfo(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        
+        $dropbox_accounts = $this->storageAccountModel->getStorageAccountsOfProvider($user, 'dropbox');
+        foreach($dropbox_accounts as $k=>$acc){
+            $dropbox_accounts[$k]['quota_info'] = $this->storageAccountModel->getQuotaInfo($acc);
+        }
+        
+        header('Content-Type: application/json');
+        echo json_encode($dropbox_accounts);
+    }
+    public function testdropboxdeletestoragefile(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $path = $this->input->post('path');
+        $dropbox_accounts = $this->storageAccountModel->getStorageAccountsOfProvider($user, 'dropbox');
+        
+        foreach($dropbox_accounts as $k=>$acc){
+            $this->cloudStorageModel->deleteStorageFile($path, $acc);
+        }
+        
+        header('Content-Type: application/json');
+        echo json_encode(array('status'=>'done'));
+    }
 }

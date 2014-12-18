@@ -7,13 +7,13 @@
     <?php echo $title ?>
   </title>
   <meta http-equiv="Content-Type" content="text/html" charset="utf-8">
-  <script src="http://code.jquery.com/jquery-1.10.2.js"></script>
-  <script src="http://code.jquery.com/ui/1.11.0/jquery-ui.js"></script>
-  <link rel="stylesheet" href="http://code.jquery.com/ui/1.10.4/themes/smoothness/jquery-ui.css">
+  <script src="<?php echo base_url();?>asset/jquery/js/jquery-2.1.3.min.js"></script>
+ <script src="<?php echo base_url();?>asset/jquery/js/jquery-ui-1.11.2/jquery-ui.min.js"></script>
+  <link rel="stylesheet" href="<?php echo base_url();?>asset/jquery/css/jquery-ui-themes-1.11.2/themes/smoothness/jquery-ui.min.css">
   <link rel="stylesheet" href="<?php echo base_url();?>asset/ztree/css/demo.css" type="text/css">
   <link rel="stylesheet" href="<?php echo base_url();?>asset/ztree/css/zTreeStyle/zTreeStyle.css" type="text/css">
   
-  <script type="text/javascript" src="<?php echo base_url();?>asset/ztree//js/jquery.ztree.core-3.5.js"></script>
+  <script type="text/javascript" src="<?php echo base_url();?>asset/ztree/js/jquery.ztree.core-3.5.js"></script>
   <script type="text/javascript" src="<?php echo base_url();?>asset/ztree/js/jquery.ztree.excheck-3.5.js"></script>
   <script type="text/javascript" src="<?php echo base_url();?>asset/ztree/js/jquery.ztree.exedit-3.5.js"></script>
   

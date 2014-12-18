@@ -3,17 +3,18 @@
 <head>
 	<meta http-equiv="Content-Type" content="text/html"; charset="utf-8" />
 	<title>雲端硬碟整合系統登入頁面</title>
-	<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
-	<script src="http://code.jquery.com/ui/1.10.4/jquery-ui.js"></script>
-	<link rel="stylesheet" href="http://code.jquery.com/ui/1.10.4/themes/smoothness/jquery-ui.css">
+	<script src="<?php echo base_url();?>asset/jquery/js/jquery-2.1.3.min.js"></script>
+    <script src="<?php echo base_url();?>asset/jquery/js/jquery-ui-1.11.2/jquery-ui.min.js"></script>
+  <link rel="stylesheet" href="<?php echo base_url();?>asset/jquery/css/jquery-ui-themes-1.11.2/themes/smoothness/jquery-ui.min.css">
 	<!-- Latest compiled and minified CSS -->
-  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+ <!-- Latest compiled and minified CSS -->
+  <link rel="stylesheet" href="<?php echo base_url();?>asset/bootstrap-3.2.0-dist/css/bootstrap.min.css">
 
   <!-- Optional theme -->
-  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap-theme.min.css">
+  <link rel="stylesheet" href="<?php echo base_url();?>asset/bootstrap-3.2.0-dist/css/bootstrap-theme.min.css">
 
   <!-- Latest compiled and minified JavaScript -->
-  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></script>
+  <script src="<?php echo base_url();?>asset/bootstrap-3.2.0-dist/js/bootstrap.min.js"></script>
 </head>
 <body>  
 	<center>

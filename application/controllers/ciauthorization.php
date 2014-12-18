@@ -8,6 +8,51 @@ class CIAuthorization extends CI_Controller
         $this->load->model('storageaccountmodel','storageAccountModel');
         $this->load->model('cloudstoragemodel','storageAccountModel');
     }
+    public function connectDropboxAccount(){
+        $app_key = '8k1f7dm3vg2tsh2';
+        $app_secret = '8kvblrvqm32hyfu';
+        $redirect_uri = base_url().'index.php/ciauthorization/dropboxcode';
+        
+        header('Location: '.'https://www.dropbox.com/1/oauth2/authorize?response_type=code&client_id='.$app_key.'&redirect_uri='.$redirect_uri.'&force_reapprove=true');
+    }
+    //note: dropbox access_token's are permanent yay!
+    public function dropboxCode(){
+        $app_key = '8k1f7dm3vg2tsh2';
+        $app_secret = '8kvblrvqm32hyfu';
+        $redirect_uri = base_url().'index.php/ciauthorization/dropboxcode';
+        
+        $code = $this->input->get('code');
+        $ch = curl_init();
+        $curlConfig = array(
+            CURLOPT_URL            => "https://api.dropbox.com/1/oauth2/token",
+            CURLOPT_POST           => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POSTFIELDS     => array(
+                'code' => $code,
+                'grant_type' => 'authorization_code',
+                'client_id'=>$app_key,
+                'client_secret'=>$app_secret,
+                'redirect_uri'=>$redirect_uri
+            )
+        );
+        curl_setopt_array($ch, $curlConfig);
+        $result = curl_exec($ch);
+        $result = json_decode($result, true);
+        //{"access_token": "ABCDEFG", "token_type": "bearer", "uid": "12345"}
+        curl_close($ch);
+        //save access_token/uid to the database
+        $curr_timestamp = new DateTime();
+        $dbdata = array(
+            'account'=>$this->session->userdata('ACCOUNT'),
+            'id_on_storage'=>$result['uid'],
+            'token_type'=>'dropbox',
+            'token'=>$result['access_token'],
+			'time_stamp'=>$curr_timestamp->format('Y-m-d H:i:s')
+		);
+		
+		$this->db->insert('storage_account', $dbdata);
+        header("Location: ".base_url()."index.php/pages/view/manageaccount");
+    }
     public function connectSkydriveAccount(){
         //not needed, we redirectly directly in the webpage
         $client_id = '0000000048127A68';
@@ -37,7 +82,7 @@ class CIAuthorization extends CI_Controller
 		//header('Content-Type: text/plain');
 		$onedrive_client_id = '0000000048127A68';
 		$onedrive_client_secret = 'MTuhJU2dIGjqndPvzc8PZwKztnuLQ6d6';
-		$onedrive_redirect_uri = 'http://storageintegration.twbbs.org/index.php/ciauthorization/onedrivecode';
+		$onedrive_redirect_uri = base_url().'index.php/ciauthorization/onedrivecode';
 		$code = $this->input->get('code');
 		$body = array(
 			'client_id'=>$onedrive_client_id,

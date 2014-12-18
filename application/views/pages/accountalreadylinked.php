@@ -3,9 +3,6 @@
 <head>
 	<meta http-equiv="Content-Type" content="text/html"; charset="utf-8" />
 	<title>雲端硬碟聯結錯誤</title>
-	<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
-	<script src="http://code.jquery.com/ui/1.10.4/jquery-ui.js"></script>
-	<link rel="stylesheet" href="http://code.jquery.com/ui/1.10.4/themes/smoothness/jquery-ui.css">
 </head>
 <body>  
 	<center>

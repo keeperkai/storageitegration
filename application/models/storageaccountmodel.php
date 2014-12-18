@@ -201,6 +201,11 @@ class StorageAccountModel extends CI_Model
 		$accounts = $this->getSchedulingInfoForMultipleStorageAccounts($accounts);
 		return $accounts;
 	}
+    public function getStorageAccountsOfProvider($user, $provider){
+        $query = $this->db->get_where('storage_account', array('account'=>$user, 'token_type'=>$provider));
+        $storageaccounts = $query->result_array();
+        return $storageaccounts;
+    }
     public function getStorageAccounts($user){
 		$query = $this->db->get_where('storage_account', array('account'=>$user));
         $storageaccounts = $query->result_array();
