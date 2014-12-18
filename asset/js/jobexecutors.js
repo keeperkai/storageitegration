@@ -10,6 +10,7 @@ function FileController(){
   Note that type is {file, folder} which is different from mimetype
 */
 FileController.registerVirtualFileToSystem = function(mimetype, type, filename, parent_file_id, storage_file_data, callback){
+  console.log('register file to system called in filecontroller');
   var output = false;
 	var filename_tokens = filename.split('.');
 	if(filename_tokens.length>1){
@@ -140,7 +141,17 @@ ShuffleJobServerRegistrator.initiateServerShuffleExecution = function(shuffle_jo
 			'shuffle_job_id':shuffle_job_id,
 		},
 		async: true,
-		success: function(data, textstatus, request) {
+    /*
+    xhr: function(){
+        // get the native XmlHttpRequest object
+        var xhr = $.ajaxSettings.xhr() ;
+        // set the onprogress event handler
+        xhr.onprogress = function(e){
+          console.log(xhr.responseText);
+        };
+    },
+    */
+    success: function(data, textstatus, request) {
 			//all chunks done and move job registered to be done
 			//call the callback function
 			callback(data);
@@ -581,10 +592,11 @@ ChunkLevelMoveJobExecutor.prototype.execute = function(callback){
 		}
 		var filetype = source_file.mime_type;
 		var filesize = source_file.storage_file_size;
-		var uploader = DataUploadExecutorFactory.createDataUploadExecutor(chunkjob.target_account, source_file.name, source_file.mime_type, source_file.storage_file_size);
+    var chunkjob_size = chunkjob.byte_offset_end - chunkjob.byte_offset_start + 1;
+		var uploader = DataUploadExecutorFactory.createDataUploadExecutor(chunkjob.target_account, source_file.name, source_file.mime_type, chunkjob_size);
     //here we need to determine where we can upload the whole data once or the memory isn't enough, then we need to upload the data using chunk dl->chunk upload, which is not supported by all
     //uploaders, but the client executor shouldn't have to worry about this because the scheduler will take care of this, all we need to do is check the chunk size
-    var chunkjob_size = chunkjob.byte_offset_end - chunkjob.byte_offset_end + 1;
+    
     function chunkjobcomplete(id){
       ShuffleJobServerRegistrator.registerChunkJobCompleted(chunkjob.chunk_job_id, id, executenextchunkjob);
     }

@@ -9,6 +9,7 @@ class CIAuthorization extends CI_Controller
         $this->load->model('cloudstoragemodel','storageAccountModel');
     }
     public function connectSkydriveAccount(){
+        //not needed, we redirectly directly in the webpage
         $client_id = '0000000048127A68';
         $client_secret = 'MTuhJU2dIGjqndPvzc8PZwKztnuLQ6d6';
     }

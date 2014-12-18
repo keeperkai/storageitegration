@@ -414,7 +414,7 @@ $config['provider_info'] = array(
 		'copy_and_replace_support'=>true,
 		'cors_download_range_header_support'=>true,
 		'cors_download_support'=>true,
-        
+        'cors_resumable_upload_support'=>true,
         'permission_model'=>'set'
     ),
     'onedrive'=>array(
@@ -450,12 +450,13 @@ $config['provider_info'] = array(
 		'copy_and_replace_support'=>false,
 		'cors_download_range_header_support'=>false,
 		'cors_download_support'=>false,
-        
+        'cors_resumable_upload_support'=>false,
         'permission_model'=>'link'
     ),
     
 );
-$config['client_memory_limit'] = 100*1024*1024;//100mb, in bytes
+//$config['client_memory_limit'] = 100*1024*1024;//100mb, in bytes
+$config['client_memory_limit'] = 50*1024*1024;//50mb, in bytes
 
 /* End of file config.php */
 /* Location: ./application/config/config.php */

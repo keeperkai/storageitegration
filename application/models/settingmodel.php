@@ -17,9 +17,10 @@ class SettingModel extends CI_Model
 		return $output;
 	}
 	public function chunkAllowedForExtension($user, $ext){
-		$q = $this->db->get_where('setting', array('account'=>$user));
+        $q = $this->db->get_where('setting', array('account'=>$user, 'extension'=>$ext));
 		$r = $q->result_array();
-		return (sizeof($r)==0);
+        if(sizeof($r)>0) return false;
+        else return true;
 	}
 	public function getAllSettings($user){
 		$output = array();

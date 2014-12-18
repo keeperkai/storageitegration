@@ -5,6 +5,7 @@
   <div class="panel-body">
 <button onclick = 'return connectGoogleAccount();'>連結google雲端硬碟帳號</button>
 <button onclick = 'return connectOneDriveAccount();'>連結onedrive雲端硬碟帳號</button>
+<button onclick = 'return connectDropboxAccount();'>連結dropbox雲端硬碟帳號</button>
 </div>
 </div>
 <div class="panel panel-info">

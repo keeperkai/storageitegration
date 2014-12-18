@@ -41,6 +41,41 @@ class StorageAccountModel extends CI_Model
 		return $q->result_array();
 	}
     /*
+        i.use testscheduling3 with .zip files configured to be sent to googledrive(with legit scheduling info), 
+        then send powerline2.zip and powerlinedouble.zip, and then delete the .zip configuration and change the allow chunk of those files to true.
+        or 
+        
+        delete all linked accounts and just link a google drive account first, upload with normal scheduling info: powerline2.zip powerlinedouble.zip,
+        then link another googledrive account and another onedrive account.
+        ii.use getStorageAccountForceMultiChunked(sets the 2nd googledrive account free quota to the size of powerline2.zip and the onedrive account free quota
+        to the size of powerlinedouble.zip ) and try to upload basicintrotoshaders.mp4
+        
+        this function forces an api copy and replace and a assign by chunk move job that is executed both on the server and the client
+        note that the accounts must come in the order described above.
+        [0] gdrive account with no movable files
+        [1] gdrive account with 2 files
+        [2] one drive account with no movable files
+    */
+    public function getStorageAccountForceMultiChunked($user, $filesize){
+        //powerline2.zip size : 41178185
+        //powerlinedouble.zip size: 82356474
+        
+        //let the 1st google account have powerline2.zip + 10mb space
+        //and let 3rd onedrive account have powerlinedouble - 10mb space
+        //this will force the scheduler to schedule an api copy to the 1st account and then chunk 10mb of the powerlinedouble.zip file.
+        //the rest of the powerlinedouble.zip file will be transferred to the 3rd account
+        $accounts = $this->getStorageAccounts($user);
+        $accounts[0]['quota_info'] = array('total'=>15*1024*1024*1024, 'free'=>41178185+10*1024*1024, 'used'=>15*1024*1024*1024-(41178185+10*1024*1024));
+        $accounts[1]['quota_info'] = array('total'=>15*1024*1024*1024, 'free'=>0, 'used'=>15*1024*1024*1024);
+        $accounts[2]['quota_info'] = array('total'=>15*1024*1024*1024, 'free'=>82356474-10*1024*1024, 'used'=>15*1024*1024*1024-(82356474-10*1024*1024));
+        foreach($accounts as $key=>$acc){
+            $accounts[$key]['api_single_file_limit'] = $this->getApiSingleFileLimit($acc['token_type']);
+			$accounts[$key]['min_free_quota_single_file_limit'] = min($accounts[$key]['quota_info']['free'], $accounts[$key]['api_single_file_limit']);
+        }
+        //var_dump($accounts);
+		return $accounts;
+    }
+    /*
         fake free quota, make them really really low to force the scheduler to split unregistered upload file,
         this function will return free quota for each account that is the average of the size of the file, for instance:
         the file is 40mb and the user owns 4 accounts, it will return 10mb of free quota for each account, make sure each account has

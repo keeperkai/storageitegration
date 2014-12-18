@@ -117,6 +117,7 @@ class Files extends CI_Controller
             header('Location: '.base_url().'index.php/pages/view/login');
             return;
         }
+        
         $user = $this->session->userdata('ACCOUNT');
 		$fileData = array();
 		$fileData['account'] = $user;
@@ -125,10 +126,16 @@ class Files extends CI_Controller
 		$fileData['name'] = $this->input->post('name');
 		$fileData['extension'] = $this->input->post('extension');
 		$fileData['parent_virtual_file_id'] = $this->input->post('parent_virtual_file_id');
-		$allow_chunk = $this->settingModel->chunkAllowedForExtension($user, $fileData['extension']);
+		
+        $allow_chunk = false;
         
 		$storage_file_data = json_decode($this->input->post('storage_file_data'), true);
         if(sizeof($storage_file_data)>1)    $allow_chunk = true;//if the file is already chunked, it doesn't matter what extension it is
+        else if($fileData['file_type']=='folder') $allow_chunk = false;
+        else{
+            $allow_chunk = $this->settingModel->chunkAllowedForExtension($user, $fileData['extension']);
+        }
+        
         $fileData['allow_chunk'] = $allow_chunk;
         
 		/*
@@ -157,8 +164,13 @@ class Files extends CI_Controller
 			//inherit permissions from parent
 			$this->fileModel->inheritParentPermission($virtual_file_id);
 			if($fileData['file_type']!='folder'){
-				$this->fileModel->registerStorageFileData($storage_file_data, $virtual_file_id);
-			}
+				//foreach storage file, register them and propagate the permissions to storage if needed
+                foreach($storage_file_data as $sfile){
+                    $sfile['virtual_file_id'] = $virtual_file_id;
+                   $this->fileModel->registerStorageFileAndSetPermissionsOnStorage($sfile);
+                }
+            }
+            
 		}else{
 			$resp['status'] = 'error';
 		}

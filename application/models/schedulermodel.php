@@ -300,6 +300,18 @@ class SchedulerModel extends CI_Model
 	}
 	private function pickBestFitAccountWithMinFreeQuotaApiLimit($suitable_accounts, $file_size){
 		//suitable_accounts: H->L min_free_quota_single_file_limit
+        $picked = -1;
+        for($j=0;$j<sizeof($suitable_accounts);$j++){
+            $acc = $suitable_accounts[$j];
+            if($acc['min_free_quota_single_file_limit']>=$file_size){
+                $picked = $j;
+            }else{
+                break;
+            }
+            
+        }
+        return $picked;
+        /*
 		$picked_acc_idx = -1;
 		if(sizeof($suitable_accounts)>=1){
 			for($j=0;$j<sizeof($suitable_accounts)-1;$j++){
@@ -320,6 +332,7 @@ class SchedulerModel extends CI_Model
 			}
 		}
 		return $picked_acc_idx;
+        */
 	}
 	private function bestFitShuffleWithApiLimit($suitable_accounts, $source_account, $source_files, $target_quota){
 		//same as below, except this time we need to consider the api limits for whole files.
@@ -327,6 +340,17 @@ class SchedulerModel extends CI_Model
 	}
 	private function pickBestFitAccountWithFreeQuota($suitable_accounts, $file_size){
 		//suitable_accounts: H->L free quota order
+        $picked = -1;
+        for($j=0;$j<sizeof($suitable_accounts);$j++){
+            $acc = $suitable_accounts[$j];
+            if($acc['quota_info']['free']>=$file_size){
+                $picked = $j;
+            }else{
+                break;
+            }
+        }
+        return $picked;
+        /*
 		$picked_acc_idx = -1;
 		if(sizeof($suitable_accounts)>1){
 			for($j=0;$j<sizeof($suitable_accounts)-1;$j++){
@@ -337,18 +361,23 @@ class SchedulerModel extends CI_Model
 					$picked_acc_idx = $j;
 				}
 			}
-			//test if the last account is suitable
-			if($suitable_accounts[sizeof($suitable_accounts)-1]['quota_info']['free']>=$lastfile['storage_file_size']){
-				$picked_acc_idx = sizeof($suitable_accounts)-1;
-			}
+            //if no account has been picked, see if the last account is suitable
+            if($picked_acc_idx == -1){
+                if($suitable_accounts[sizeof($suitable_accounts)-1]['quota_info']['free']>=$file_size){
+                    $picked_acc_idx = sizeof($suitable_accounts)-1;
+                }
+            }
+			
+			
 		}else if(sizeof($suitable_accounts)==1){//only 1 suitable account
-			if($suitable_accounts[0]['quota_info']['free']>= $lastfile['storage_file_size']){
+			if($suitable_accounts[0]['quota_info']['free']>= $file_size){
 				$picked_acc_idx = 0;
 			}
 		}else{//no suitable accounts
 		
 		}
-		return $picked_acc_idx;
+        return $picked_acc_idx;
+        */
 	}
 	private function updateStorageAccountMinFreeQuotaApiSingleFileLimit($storage_account){
 		$storage_account['min_free_quota_single_file_limit'] = min($storage_account['api_single_file_limit'], $storage_account['quota_info']['free']);
@@ -674,6 +703,8 @@ class SchedulerModel extends CI_Model
 		foreach($movable_storage_files as $sfile){
 			$total_movable_bytes += $sfile['storage_file_size'];
 		}
+        //echo 'total movable bytes for this account: ';
+        //var_dump($total_movable_bytes);
         if($total_movable_bytes+$target_account['quota_info']['free']<$size){
 			return false;
 		}
@@ -683,20 +714,28 @@ class SchedulerModel extends CI_Model
 		//try to do copy-and-delete on provider side, create scheduling data
 		$copy_and_replace_support = $p_info[$target_account['token_type']]['copy_and_replace_support'];
 		if($copy_and_replace_support){
-			//first, copy the accounts that are same type with the target account
+            //echo 'supports copy and replace, victim account:';
+            //var_dump($target_account);
+            //first, copy the accounts that are same type with the target account
 			$same_provider_accounts = array();
-			foreach($other_accounts as $acc){
-				if($acc['token_type'] == $target_account){
+            foreach($other_accounts as $acc){
+				if($acc['token_type'] == $target_account['token_type']){
 					$same_provider_accounts[]=$acc;
+                    //echo 'other account picked: ';
+                    //var_dump($acc);
 				}
 			}
 			$result = $this->bestFitShuffle($same_provider_accounts, $target_account, $movable_storage_files, $target_quota, true);
+            //echo 'api copy result: ';
+            //var_dump($result);
 			$this->updateSimulationStates($result, $schedule_data, $cost, $target_quota, $other_accounts, $movable_storage_files);
 			//if completed, output data
-			//var_dump($result);//quota met is true for some dumb reason
 			if($result['quota_met']){
 				return array('cost'=>0, 'schedule_data'=>$schedule_data);//no cost
 			}
+            
+            //echo 'copy and replace result:  ';
+            //var_dump($result);
 		}
 		//cross provider whole file moving, we should consider moving only the whole storage files first because we cannot
 		//chunk them(well we can but we'd prefer not to, this will make our server need to interfere when the user wants to download this file)
@@ -734,6 +773,10 @@ class SchedulerModel extends CI_Model
 		
 		//if still not completed, start chunking any file
 		$result = $this->chunkedShuffle($other_accounts, $target_account, $movable_storage_files, $target_quota);
+        
+        //echo 'chunked shuffle any file result: ';
+        //var_dump($result);
+        
         $this->updateSimulationStates($result, $schedule_data, $cost, $target_quota, $other_accounts, $movable_storage_files);
 		//if completed, output data, if not return false
 		if($result['quota_met']){
@@ -820,10 +863,12 @@ class SchedulerModel extends CI_Model
         
         
         //get all the accounts and their info of the current user
-		//$accounts = $this->storageAccountModel->getStorageAccountWithSchedulingInfo($user);
+        
+		$accounts = $this->storageAccountModel->getStorageAccountWithSchedulingInfo($user);
+        //$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfo($user);
         //$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfoForceSplit($user, $size);
-        $accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfoForceShuffle($user, $size, 0.8);
-		//$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfo($user);
+        //$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfoForceShuffle($user, $size, 0.8);//sets all free quota to 0.8 of uploading file
+		//$accounts = $this->storageAccountModel->getStorageAccountForceMultiChunked($user, $size);//forces api copy and chunk level assign with both client/server
 		
         
         

@@ -240,6 +240,9 @@ class FileModel extends CI_Model
 		}
 		
 	}
+    /*
+        add's permission in our system to a file, does not add the permission to the cloud storages. for that, use cloudstoragemodel->propagate
+    */
 	public function addPermissionForSingleFile($virtual_file_id, $user, $role){
 		//first check if the user already has permission
 		$q = $this->db->get_where('file_permissions', array('account'=>$user, 'virtual_file_id'=>$virtual_file_id));
@@ -270,13 +273,14 @@ class FileModel extends CI_Model
 		$this->db->where(array('storage_file.virtual_file_id'=>$virtual_file_id));
 		$q = $this->db->get();
 		$r = $q->result_array();
-		
+		/*
 		foreach($r as $sfile){
 			if($sfile['token_type']=='googledrive'){
 				//$this->addPermissionForGoogleFile($sfile, $user, $role);
 				$this->googleDriveModel->addPermissionForUser($sfile['storage_id'], $sfile['storage_account_id'], $user, $role);
 			}
 		}
+        */
 	}
 	public function registerStorageFile($storageFileData){
 		return $this->db->insert('storage_file', $storageFileData);

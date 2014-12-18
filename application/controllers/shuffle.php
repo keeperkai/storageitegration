@@ -52,10 +52,11 @@ class Shuffle extends CI_Controller
             header('Location: '.base_url().'index.php/pages/view/login');
             return;
         }
+        set_time_limit(0);
 		$user = $this->session->userdata('ACCOUNT');
 		$shuffle_job_id = $this->input->post('shuffle_job_id');
 		//get the shuffle data
-		$shufflejob = $this->getShuffleJobData($shuffle_job_id);
+		$shufflejob = $this->shuffleJobModel->getShuffleJobData($shuffle_job_id);
 		//check if this is the owner of the shuffle job
         if($shufflejob['account'] != $user){
             header('Content-Type: application/json');
@@ -63,7 +64,7 @@ class Shuffle extends CI_Controller
             return;
         }
         //execute the shuffle data for server side
-		
+		$this->shuffleJobModel->executeShuffleJob($shufflejob);
 		//respond to the browser
         
         header('Content-Type: applicaton/json');

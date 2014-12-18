@@ -171,12 +171,16 @@ class ShuffleJobModel extends CI_Model
         takes the output of getShuffleJobData and executes it
     */
     public function executeShuffleJob($shuffle_job_data){
+        //var_dump('executing         ');
+        //echo 'executing shuffle job: '.$shuffle_job_data['shuffle_job_id'];
         foreach($shuffle_job_data['move_job'] as $movejob){
             $this->executeMoveJob($movejob);
         }
         //no need to check shuffle job completed here, since the client will do that for us.
     }
     public function executeMoveJob($movejob){
+        //echo 'executing move job: '.$movejob['move_job_id'];
+        
         //for each type of move job, do something different
         //'download_whole_file_and_distribute_on_server','download_whole_file_and_distribute_on_client','api_copy_and_replace','chunk_level_assign'
         if($movejob['job_type'] == 'download_whole_file_and_distribute_on_server'){
@@ -228,34 +232,70 @@ class ShuffleJobModel extends CI_Model
         
     }
     public function executeChunkLevelMoveJob($movejob){
+        //echo 'executing chunk level job: ';
+        //$s = microtime(true);
+        
         //for these kinds of jobs, the source account must support partial download.
         $source_account = $movejob['source_account'];
         $source_file = $movejob['source_file'];
         foreach($movejob['chunk_job'] as $chunkjob){
-            $target_account = $chunkjob['target_account'];
-            $source = tmpfile();
-            //download the chunk of the file from the source file
-            $start_offset = $chunkjob['byte_offset_start'];
-            $end_offset = $chunkjob['byte_offset_end'];
-            $size_of_chunk = $end_offset - $start_offset + 1;
-            $this->cloudStorageModel->downloadChunk($source_account, $source_file['storage_id'], $start_offset, $end_offset, $source);
-            //upload the file as a new storage file
-            $storage_id = $this->cloudStorageModel->uploadFile($target_account, $source_file['name'], $source_file['mime_type'], $size_of_chunk, $source);
-            //register chunk job completed
-            $this->registerChunkJobCompleted($chunkjob['chunk_job_id'], $storage_id);
-            //close fp
-            fclose($source);
+            if($chunkjob['executor'] == 'server'){
+                $target_account = $chunkjob['target_account'];
+                $source = '';
+                //download the chunk of the file from the source file
+                $start_offset = $chunkjob['byte_offset_start'];
+                $end_offset = $chunkjob['byte_offset_end'];
+                $size_of_chunk = $end_offset - $start_offset + 1;
+                //echo 'downloading source    ';
+                $dl_count = 0;
+                while($dl_count<3){
+                    $source=tmpfile();
+                    $this->cloudStorageModel->downloadChunk($source_account, $source_file['storage_id'], $start_offset, $end_offset, $source);
+                    //check if the downloaded chunk matches the size to see if download is success
+                    fseek($source, 0, SEEK_END);
+                    if(ftell($source)!=$size_of_chunk){
+                        fclose($source);
+                        $dl_count++;
+                        continue;
+                    }else{
+                        break;
+                    }
+                }
+                if($dl_count>=3){
+                    var_dump($chunkjob);
+                    throw new Exception('unable to download chunk from the above chunkjob');
+                    exit(0);
+                }
+                rewind($source);
+                //echo 'source downloaded, uploading file    ';
+                //upload the file as a new storage file
+                $storage_id = $this->cloudStorageModel->uploadFile($target_account, $source_file['name'], $source_file['mime_type'], $size_of_chunk, $source);
+                //echo 'uploaded    ';
+                //register chunk job completed
+                $this->registerChunkJobCompleted($chunkjob['chunk_job_id'], $storage_id);
+                //close fp
+                fclose($source);
+            }
         }
         //check move job completed
         $this->checkMoveJobCompleted($movejob['move_job_id']);
+        
+        //$t = microtime(true);
+        //echo 'time = '.($t-$s).PHP_EOL;
     }
     public function executeApiCopyAndReplace($movejob){
+        //echo 'executing api copy and replace';
+        //$s = microtime(true);
+        
         $source_account = $movejob['source_account'];
         $source_file = $movejob['source_file'];
         $target_account = $movejob['chunk_job'][0]['target_account'];
-        $storage_id = $this->cloudStorageModel->apiCopyFileBetweenAccounts($source_account, $source_file['storage_id'], $target_account);
-        $this->registerChunkJobCompleted($movejob['chunk_job'][0]['chunk_job_id']);
+        $storage_id = $this->cloudStorageModel->apiCopyFile($source_file['storage_id'], $target_account);
+        $this->registerChunkJobCompleted($movejob['chunk_job'][0]['chunk_job_id'], $storage_id);
         $this->registerMoveJobCompleted($movejob['move_job_id']);
+        
+        //$t = microtime(true);
+        //echo 'time = '.($t-$s).PHP_EOL;
     }
     
 }
