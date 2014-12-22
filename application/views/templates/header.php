@@ -25,6 +25,7 @@
 
   <!-- Latest compiled and minified JavaScript -->
   <script src="<?php echo base_url();?>asset/bootstrap-3.2.0-dist/js/bootstrap.min.js"></script>
+  <script src="<?php echo base_url();?>asset/js/controllers.js"></script>
 <style>
 .noTitleStuff .ui-dialog-titlebar {display:none}
 #rightclickmenu {

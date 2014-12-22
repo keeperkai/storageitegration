@@ -7,8 +7,9 @@ class Test extends CI_Controller
         $this->load->model('filemodel', 'fileModel');
         $this->load->model('storageaccountmodel', 'storageAccountModel');
         $this->load->model('cloudstroragemodel', 'cloudStorageModel');
-        //$this->load->model('googledrivemodel', 'googleDriveModel');
         
+        //$this->load->model('googledrivemodel', 'googleDriveModel');
+        $this->load->model('dropboxmodel', 'dropboxModel');
     }
     public function echoPostBody(){
         $body = file_get_contents('php://input');
@@ -58,15 +59,15 @@ class Test extends CI_Controller
         $output = array();
         $storage_accounts = $this->storageAccountModel->getStorageAccounts($user);
         
-        $testfilename = 'testimage.png';
+        $testfilepath = 'testimage.png';
         $testfilemime = 'image/png';
         
         /*
-        $testfilename = 'powerline2.zip';
+        $testfilepath = 'powerline2.zip';
         $testfilemime = 'application/octet-stream';
         */
-        $testfilesize = filesize(APPPATH . $testfilename);
-        $img = fopen(APPPATH . $testfilename, 'r');
+        $testfilesize = filesize(APPPATH . $testfilepath);
+        $img = fopen(APPPATH . $testfilepath, 'r');
         //$data = stream_get_contents($img);
         //upload the file first
         
@@ -74,9 +75,9 @@ class Test extends CI_Controller
         foreach($storage_accounts as $acc){
             //if($acc['token_type'] != 'googledrive') continue;
             $s = microtime(true);
-            $id = $this->cloudStorageModel->uploadFile($acc, 'base_'.$testfilename, $testfilemime, $testfilesize, $img);
+            $id = $this->cloudStorageModel->uploadFile($acc, 'base_'.$testfilepath, $testfilemime, $testfilesize, $img);
             //var_dump($id);
-            //$id = $this->googleDriveModel->uploadFileData($acc, $testfilename, $testfilemime, $testfilesize, $data);
+            //$id = $this->googleDriveModel->uploadFileData($acc, $testfilepath, $testfilemime, $testfilesize, $data);
             $t = microtime(true);
             echo 'first upload: '.($t-$s);
             //download the file
@@ -87,8 +88,8 @@ class Test extends CI_Controller
             $t = microtime(true);
             echo 'download: '.($t-$s);
             $s = microtime(true);
-            $output[]=$this->cloudStorageModel->uploadFile($acc, $testfilename, $testfilemime, $testfilesize, $tmph);
-            //$output[]=$this->googleDriveModel->uploadFileData($acc, $testfilename, $testfilemime, $testfilesize, $dl_data);
+            $output[]=$this->cloudStorageModel->uploadFile($acc, $testfilepath, $testfilemime, $testfilesize, $tmph);
+            //$output[]=$this->googleDriveModel->uploadFileData($acc, $testfilepath, $testfilemime, $testfilesize, $dl_data);
             $t = microtime(true);
             echo 'second upload: '.($t-$s);
             
@@ -113,20 +114,20 @@ class Test extends CI_Controller
         $output = array();
         $storage_accounts = $this->storageAccountModel->getStorageAccounts($user);
         
-        $testfilename = 'testimage.png';
+        $testfilepath = 'testimage.png';
         $testfilemime = 'image/png';
         
         /*
-        $testfilename = 'powerline2.zip';
+        $testfilepath = 'powerline2.zip';
         $testfilemime = 'application/octet-stream';
         */
-        $testfilesize = filesize(APPPATH . $testfilename);
-        $img = fopen(APPPATH . $testfilename, 'r');
+        $testfilesize = filesize(APPPATH . $testfilepath);
+        $img = fopen(APPPATH . $testfilepath, 'r');
         
         //upload a file to each account, download parts of the file and append them together, then upload back to the same account and see if the file works
         foreach($storage_accounts as $acc){
             //upload a file to the provider
-            $base_id = $this->cloudStorageModel->uploadFile($acc, 'base_'.$testfilename, $testfilemime, $testfilesize, $img);
+            $base_id = $this->cloudStorageModel->uploadFile($acc, 'base_'.$testfilepath, $testfilemime, $testfilesize, $img);
             //download the file in three divisions
             $tmp = tmpfile();
             $div_1_id = $this->cloudStorageModel->downloadChunk($acc, $base_id, 0, floor($testfilesize/3),  $tmp);
@@ -135,7 +136,7 @@ class Test extends CI_Controller
             fseek($tmp, 0, SEEK_END);
             $div_3_id = $this->cloudStorageModel->downloadChunk($acc, $base_id, floor($testfilesize*2/3)+1, $testfilesize-1,  $tmp);
             //upload the merged file
-            $output[]=$this->cloudStorageModel->uploadFile($acc, $testfilename, $testfilemime, $testfilesize, $img);
+            $output[]=$this->cloudStorageModel->uploadFile($acc, $testfilepath, $testfilemime, $testfilesize, $img);
             //delete first file
             $this->cloudStorageModel->deleteStorageFile($base_id, $acc);
             fclose($tmp);
@@ -154,15 +155,15 @@ class Test extends CI_Controller
         $output = array();
         $storage_accounts = $this->storageAccountModel->getStorageAccounts($user);
         
-        $testfilename = 'testimage.png';
+        $testfilepath = 'testimage.png';
         $testfilemime = 'image/png';
         
         /*
-        $testfilename = 'powerline2.zip';
+        $testfilepath = 'powerline2.zip';
         $testfilemime = 'application/octet-stream';
         */
-        $testfilesize = filesize(APPPATH . $testfilename);
-        $img = fopen(APPPATH . $testfilename, 'r');
+        $testfilesize = filesize(APPPATH . $testfilepath);
+        $img = fopen(APPPATH . $testfilepath, 'r');
         
         $output = array();
         $provider_info = $this->config->item('provider_info');
@@ -176,8 +177,9 @@ class Test extends CI_Controller
                         $filtered_accounts[]=$acc;
                     }
                 }
+                if(sizeof($filtered_accounts)==0) continue;//continue if this account does not have at least one account of this provider
                 //upload a file to the first account
-                $base_id = $this->cloudStorageModel->uploadFile($filtered_accounts[0], 'base_'.$testfilename, $testfilemime, $testfilesize, $img);
+                $base_id = $this->cloudStorageModel->uploadFile($filtered_accounts[0], 'base_'.$testfilepath, $testfilemime, $testfilesize, $img);
                 //share the file with all the other accounts
                 foreach($filtered_accounts as $target_account){
                     if($target_account['storage_account_id']!=$filtered_accounts[0]['storage_account_id']){
@@ -187,7 +189,7 @@ class Test extends CI_Controller
                 //make a copy of the file in each account
                 $s =  microtime(true);
                 foreach($filtered_accounts as $target_account){
-                    $output_data[]=$this->cloudStorageModel->apiCopyFile($base_id, $target_account);
+                    $output_data[]=$this->cloudStorageModel->apiCopyFile($base_id, $filtered_accounts[0], $target_account);
                 }
                 $t = microtime(true);
                 $time_for_api_copy = $t-$s;
@@ -231,5 +233,134 @@ class Test extends CI_Controller
         
         header('Content-Type: application/json');
         echo json_encode(array('status'=>'done'));
+    }
+    public function testdropboxmakedir(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $path = $this->input->post('path');
+        $dropbox_accounts = $this->storageAccountModel->getStorageAccountsOfProvider($user, 'dropbox');
+        
+        $output = array();
+        $ch = curl_init();
+        foreach($dropbox_accounts as $k=>$acc){
+            $output[]=$this->dropboxModel->makeDir($acc, $path, $ch);
+        }
+        
+        header('Content-Type: application/json');
+        echo json_encode($output);
+    }
+    public function testdropboxupload(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $dropbox_accounts = $this->storageAccountModel->getStorageAccountsOfProvider($user, 'dropbox');
+        
+        //$testfilepath = APPPATH .'testimage.png';
+        $testfilename = 'powerline2.zip';
+        $testmime = 'application/octet-stream';
+        /*
+        $testfilename = 'testimage.png';
+        $testmime = 'image/png';
+        */
+        $testfilepath = APPPATH . $testfilename;
+        $file = fopen($testfilepath, 'r');
+        $filesize = filesize($testfilepath);
+        $output = array();
+        foreach($dropbox_accounts as $k=>$acc){
+            $output [] = $this->dropboxModel->uploadFile($acc, $testfilepath, $testmime, $filesize, $file);
+            //$output []= $this->dropboxModel->uploadSmallFile($acc, $testfilepath, 'image/png', $filesize, $file);
+        }
+        header('Content-Type: application/json');
+        echo json_encode($output);
+    }
+    /*
+        uploads a file on our server and then downloads it and then uploads it again to the storage provider
+    */
+    public function testdropboxuploadthendownloadthenupload(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $output = array();
+        $storage_accounts = $this->storageAccountModel->getStorageAccountsOfProvider($user, 'dropbox');
+        
+        $testfilepath = 'testimage.png';
+        $testfilemime = 'image/png';
+        
+        /*
+        $testfilepath = 'powerline2.zip';
+        $testfilemime = 'application/octet-stream';
+        */
+        $testfilesize = filesize(APPPATH . $testfilepath);
+        $img = fopen(APPPATH . $testfilepath, 'r');
+        //$data = stream_get_contents($img);
+        //upload the file first
+        
+        //upload to each account
+        foreach($storage_accounts as $acc){
+            $id = $this->cloudStorageModel->uploadFile($acc, 'base_'.$testfilepath, $testfilemime, $testfilesize, $img);
+            //download the file
+            $tmph = tmpfile();
+            $this->cloudStorageModel->downloadFile($acc, $id, $tmph);
+            //fseek($tmph, 0, SEEK_END);
+            //var_dump(ftell($tmph));
+            //rewind($tmph);
+            $output[]=$this->cloudStorageModel->uploadFile($acc, 'sec_upload_'.$testfilepath, $testfilemime, $testfilesize, $tmph);
+            fclose($tmph);
+            //delete the first uploaded file
+            $this->cloudStorageModel->deleteStorageFile($id, $acc);
+        }
+        
+        fclose($img);
+        echo json_encode($output);
+    }
+    /*
+        same as above, except it downloads in chunks and combines them
+    */
+    public function testdropboxuploadthendownloadchunked(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $output = array();
+        $storage_accounts = $this->storageAccountModel->getStorageAccountsOfProvider($user, 'dropbox');
+        
+        $testfilepath = 'testimage.png';
+        $testfilemime = 'image/png';
+        
+        /*
+        $testfilepath = 'powerline2.zip';
+        $testfilemime = 'application/octet-stream';
+        */
+        $testfilesize = filesize(APPPATH . $testfilepath);
+        $img = fopen(APPPATH . $testfilepath, 'r');
+        
+        //upload a file to each account, download parts of the file and append them together, then upload back to the same account and see if the file works
+        foreach($storage_accounts as $acc){
+            //upload a file to the provider
+            $base_id = $this->cloudStorageModel->uploadFile($acc, 'base_'.$testfilepath, $testfilemime, $testfilesize, $img);
+            //download the file in three divisions
+            $tmp = tmpfile();
+            $div_1_id = $this->cloudStorageModel->downloadChunk($acc, $base_id, 0, floor($testfilesize/3),  $tmp);
+            fseek($tmp, 0, SEEK_END);
+            $div_2_id = $this->cloudStorageModel->downloadChunk($acc, $base_id, floor($testfilesize/3)+1, floor($testfilesize*2/3),  $tmp);
+            fseek($tmp, 0, SEEK_END);
+            $div_3_id = $this->cloudStorageModel->downloadChunk($acc, $base_id, floor($testfilesize*2/3)+1, $testfilesize-1,  $tmp);
+            //upload the merged file
+            $output[]=$this->cloudStorageModel->uploadFile($acc, 'sec_upload_'.$testfilepath, $testfilemime, $testfilesize, $img);
+            //delete first file
+            $this->cloudStorageModel->deleteStorageFile($base_id, $acc);
+            fclose($tmp);
+        }
+        
+        fclose($img);
+        echo json_encode($output);
     }
 }

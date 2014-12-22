@@ -115,6 +115,8 @@ class CloudStorageModel extends CI_Model
     */
     public function uploadFile($storage_account, $file_name, $file_mime, $file_size, $file){
         $cs_model = $this->getCloudStorageModel($storage_account['token_type']);
+        //var_dump($storage_account['token_type']);
+        //var_dump($cs_model);
         return $cs_model->uploadFile($storage_account, $file_name, $file_mime, $file_size, $file);
     }
     /*
@@ -152,10 +154,14 @@ class CloudStorageModel extends CI_Model
         
         returns: the file id of the new replica file.
     */
-    public function apiCopyFile($storage_id, $target_account){
+    public function apiCopyFile($storage_id, $source_account, $target_account){
         $cs_model = $this->getCloudStorageModel($target_account['token_type']);
+        if($source_account['token_type']!=$target_account['token_type']){
+            throw new Exception('Trying to api copy between accounts that are from different storage providers');
+            return;
+        }
 		if(method_exists ( $cs_model , 'apiCopyFile')){
-			return $cs_model->apiCopyFile($storage_id, $target_account);
+			return $cs_model->apiCopyFile($storage_id, $source_account, $target_account);
 		}else{
             throw new Exception('Trying to copy between accounts:'.PHP_EOL.var_export($source_account, true).PHP_EOL.PHP_EOL.var_export($target_account, true).PHP_EOL.'But the method is not supported in the cloud storage model');
         }

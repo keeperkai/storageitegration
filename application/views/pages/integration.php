@@ -1,4 +1,5 @@
 <center>
+<div id='filesharepanel' style = "width:1000px;height:600px;overflow:scroll;"></div>
 <ul id="filesystempanel" class="ztree" style="width:500px;"></ul>
 <div id='fileuploadpanel' hidden>
 選擇上傳檔案:<input type="file" name="file" id="file" onchange='return upload();'/>

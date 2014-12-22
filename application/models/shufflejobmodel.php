@@ -290,7 +290,7 @@ class ShuffleJobModel extends CI_Model
         $source_account = $movejob['source_account'];
         $source_file = $movejob['source_file'];
         $target_account = $movejob['chunk_job'][0]['target_account'];
-        $storage_id = $this->cloudStorageModel->apiCopyFile($source_file['storage_id'], $target_account);
+        $storage_id = $this->cloudStorageModel->apiCopyFile($source_file['storage_id'], $source_account, $target_account);
         $this->registerChunkJobCompleted($movejob['chunk_job'][0]['chunk_job_id'], $storage_id);
         $this->registerMoveJobCompleted($movejob['move_job_id']);
         

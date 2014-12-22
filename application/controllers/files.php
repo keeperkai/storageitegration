@@ -72,6 +72,75 @@ class Files extends CI_Controller
 	}
 	
 	//end of test section-----------------------------------------------------------------------
+    /*
+        these parts are the same as googledrive
+        permission >= writers can see who has access to the file
+        others cannot see/change the permissions
+        get's the shared info of a file, output format:
+        array(
+            'status'=>'success' or 'error', if the user has >= writer access to the file, they can see the file permissions, otherwise output is error
+            'info'=>
+            array(
+                'owner'=>owner account,
+                'writers'=>array(
+                    account1,
+                    account2,
+                    ...
+                )
+                'readers'=>array(
+                    reader account1,
+                    reader account2,
+                    ...
+                )
+            )
+        
+        )
+    */
+    public function getShareInfo(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $virtual_file_id = $this->input->post('virtual_file_id');
+        $user = $this->session->userdata('ACCOUNT');
+        $user_permit = $this->fileModel->getVirtualFilePermissionForUser($virtual_file_id, $user);
+        $output = array();
+        if($user_permit == false){
+            $output['status'] = 'error';
+        }else if($user_permit['role'] == 'reader'){
+            $output['status'] = 'error';
+        }else{
+            //the user has at least writer permission to the file, so the user is allowed to see the permission info
+            $output['status'] = 'success';
+            $output['info'] = $this->fileModel->getPermissionsForVirtualFileStructured($virtual_file_id);
+        }
+        header('Content-Type: application/json');
+        echo json_encode($output);
+    }
+    public function modifyShareInfo(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $output = array('status'=>'error');
+        $user = $this->session->userdata('ACCOUNT');
+        $virtual_file_id = $this->input->post('virtual_file_id');
+        $share_change = json_decode($this->input->post('share_change'), true);
+        //var_dump($virtual_file_id);
+        //var_dump($share_change);
+        //check if the user has at least writer access
+        $permit = $this->fileModel->getVirtualFilePermissionForUser($virtual_file_id, $user);
+        if($permit){
+            $role = $permit['role'];
+            if($this->fileModel->roleCompare($role, 'writer')>=0){
+                //user has at least writer access, do what the user wants.
+                $this->fileModel->modifyShareInfo($virtual_file_id, $share_change);
+                $output['status'] = 'success';
+            }
+        }
+        header('Content-Type: application/json');
+        echo json_encode($output);
+    }
     public function getUploadInstructions(){
         if (!$this->session->userdata('ACCOUNT')) {
             header('Location: '.base_url().'index.php/pages/view/login');
@@ -187,8 +256,9 @@ class Files extends CI_Controller
         $user = $this->session->userdata('ACCOUNT');
         $files = $this->input->post('files');
         $files = $this->fileModel->getIndependentFiles($files);
+        $loosefiles = array();
         foreach($files as $file){
-            $loosefiles = $this->fileModel->deleteFileWithUserContext($file['virtual_file_id'], $user);
+            $loosefiles = array_merge($loosefiles, $this->fileModel->deleteFileWithUserContext($file['virtual_file_id'], $user));
         }
         $this->fileModel->attachLooseFilesToOwnerTree($loosefiles);
     }

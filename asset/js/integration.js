@@ -1,3 +1,332 @@
+//share panel related
+function checkShareChanges(){
+
+}
+function getUserRole(user, info){
+  if(info.owner == user){
+    return 'owner';
+  }else if(info.writers.hasOwnProperty(user)) return 'writer';
+  else if(info.reader.hasOwnProperty(user)) return 'reader';
+  else return false;
+}
+/*
+function permissionDeleted(target_account, original_info){
+  
+  
+  var original_role = getUserRole(original_info);
+  //see if the account is in the original info
+  if(original_role!= false){//if so we need to update or insert the delete
+    //check if it has already been deleted before( this could happen when a user deletes the permission and adds a new one with the same account )
+  }else{//if the account isn't in the original info, we need to delete the permission in the share_changes.permission_insert
+  
+  }
+}
+function permissionModified(target_account, new_permission, original_info){
+  
+  if(share_changes.permission_insert.hasOwnProperty(target_account)){//check if the permission exists in the share_changes inserted
+    //if so, change the permission in the permission_insert
+    share_changes.permission_insert[target_account] = new_permission;
+  }else{//if the permission does not exist in the inserted changes, it was originally from the original_info
+    //see if we already changed this before, if so change the permission_change
+    if(share_changes.permission_change.hasOwnProperty(target_account)){
+      //we changed it before, just check if it is the same as the original permission, if so delete this change
+      //search for the account in the original array
+      var original_role = getUserRole(target_account, original_info);
+      if(original_role != false){
+        console.log('there was an error, the account does not exist in inserted and the original share info while trying to change it');
+        return;
+      }//there should be no case where this happens
+      if(original_role == new_permission){//delete the change
+        delete share_changes.permission_change[target_account];
+      }else{//modify the change
+        share_changes.permission_change[target_account] = new_permission;
+      }
+    }else{//we haven't changed it before, so we need to set the permission
+      share_changes.permission_change[target_account] = new_permission;
+    }
+  }
+}
+*/
+
+//inserts a permission from the bottom of the share panel
+function insertPermission(){
+  var accountname = $('#filesharepanel').find('#file_share_account_input').val();
+  if(accountname == original_info.owner){
+    alert('不能重新設定檔案擁有者之權限');
+    return;
+  }
+  var role = $('#file_share_permission_input option:selected').val();
+  if(accountname==''){
+    alert('你沒有輸入帳號');
+    return;
+  }
+  //see if the table already has this account, if so then just update, remember to filter the owner
+  
+  var matches = $('#permission_table').find('td:contains("'+accountname+'")');
+  if(matches.length>0){
+    var selection = matches.closest('tr').find('select');
+    selection.val(role);
+  }else{
+  //if not then insert
+    var selection_str = '';
+    if(role == 'writer'){
+      selection_str = '<select><option value="writer" selected>可編輯</option><option value="reader">可觀看</option></select>';
+    }else if(role == 'reader'){
+      selection_str = '<select><option value="writer">可編輯</option><option value="reader" selected>可觀看</option></select>';
+    }
+    $('#permission_table').append('<tr><td>'+accountname+'</td><td>'+selection_str+'</td><td><button class="delete_permission_button">刪除</button></td></tr>');
+    $('#filesharepanel').find('.delete_permission_button').off('click');
+    $('#filesharepanel').find('.delete_permission_button').click(function(){
+      $(this).closest('tr').remove();
+    });
+  }
+}
+/*
+  output:
+  {
+    owner: owner account
+    writer:
+    [
+      writer account1
+      ...
+    ],
+    reader:
+    [
+      reader account 1
+      ...
+    ]
+  }
+  
+*/
+function extractSharePanelInfo(){
+  var output = {};
+  //get the infos from permission table
+  var owner = $('#permission_table').find('td:contains("檔案擁有者")').closest('tr').children(':nth-child(1)').text();
+  output['owner'] = owner;
+  var writers = [];
+  var readers= [];
+  $('#permission_table').find('select').each(function(){
+    var user = $(this).closest('tr').children(':nth-child(1)').text();
+    if($(this).val() == 'reader'){
+      readers.push(user);
+    }else{
+      writers.push(user);
+    }
+  });
+  /*
+  $('#permission_table').find('select[value="writer"]').each(function(){
+    var writer = $(this).closest('tr').children(':nth-child(1)').text();
+    writers.push(writer);
+  });
+  $('#permission_table').find('select[value="reader"]').each(function(){
+    var reader = $(this).closest('tr').children(':nth-child(1)').text();
+    readers.push(reader);
+  });
+  */
+  output['writer'] = writers;
+  output['reader'] = readers;
+  console.log('extracted:')
+  console.log(output);
+  return output;
+}
+/*
+  makes the share info into a map, easy for query
+  input: look at the output of extractSharePanelInfo
+  output:
+  {
+    account_name: role
+    account_name2: role2
+    ...
+  }
+  
+*/
+function createShareInfoMap(info){
+  var output = {};
+  output[info.owner] = 'owner';
+  for(var i=0; i<info.writer.length; ++i){
+    output[info.writer[i]] = 'writer';
+  }
+  for(var i=0; i<info.reader.length; ++i){
+    output[info.reader[i]] = 'reader';
+  }
+  return output
+}
+//compares two share infos, and get's the changes
+/*
+format:
+  {
+    updated: true or false
+    permission_change:
+    {
+      user_account: writer or reader,
+      user_account2: ...
+    }
+    permission_delete:
+    [
+      user_account,
+      useraccount2,
+      ..
+    ]
+    permission_insert:
+    {
+      user_account: writer or reader
+    }
+    
+  }
+*/
+function getShareInfoChanges(originalinfo, newinfo){
+  output = {};
+  var updated = false;
+  //generate maps
+  var original_map = createShareInfoMap(original_info);
+  var new_map = createShareInfoMap(newinfo);
+  //owner cannot be changed, so we will do nothing for the owner part
+  //try to find deleted permissions
+  var deleted = [];
+  for(var user in original_map){
+    if(original_map.hasOwnProperty(user)){
+      if(!new_map.hasOwnProperty(user)){//new map doesn't have a permission that is in the old map, meaning it is deleted
+        updated = true;
+        deleted.push(user);
+      }
+    }
+  }
+  //try to find changed permissions
+  var changed = {};
+  for(var user in original_map){
+    if(original_map.hasOwnProperty(user)){
+      if(new_map.hasOwnProperty(user)){//new map has the user, check if the permission is the same, if not add new permission to changed
+        if(new_map[user] != original_map[user]){
+          updated = true;
+          changed[user] = new_map[user];
+        }
+      }
+    }
+  }
+  //try to find inserted permissions(permissions that are not in the original but are in the new info)
+  var inserted = {};
+  for(var user in new_map){
+    if(new_map.hasOwnProperty(user)){
+      if(!original_map.hasOwnProperty(user)){//old map doesn't have this user, but new one does, it is inserted
+        updated = true;
+        inserted[user] = new_map[user];
+      }
+    }
+  }
+  //format the output
+  output['permission_change'] = changed;
+  output['permission_delete'] = deleted;
+  output['permission_insert'] = inserted;
+  output['updated'] = updated;
+  console.log('changes:');
+  console.log(output);
+  return output;
+}
+function closeSharePanel(){
+  $('#filesharepanel').dialog('close');
+}
+function commitShareChange(original_info){//commits the changes to share info to the server
+  //get virtual file id from the hidden input
+  var virtual_file_id = $('#vfile_id_input').val();
+  var newinfo = extractSharePanelInfo();
+  var changes = getShareInfoChanges(original_info, newinfo);
+  if(changes.updated){//there was a change
+    //ajax
+    FileController.modifyShareInfo(virtual_file_id, changes, function(){
+      closeSharePanel();
+    });
+  }
+  closeSharePanel();
+}
+/*
+var share_changes = {
+  'changed':false,
+  'permission_change':{},
+  'permission_delete':{},
+  'permission_insert':{}
+};
+*/
+var original_info = {};
+function renderShareInfo(virtual_file_id){
+  $('#filesharepanel').dialog( 'option', 'title', '設定共享權限 : '+ rightClickedNode.name );
+  var info = original_info
+  //clear the dialog
+  $('#filesharepanel').empty();
+  //start rendering
+  //find the owner first
+  var tablestr = '<table id="permission_table"><thead><tr><th>使用者帳號</th><th>權限</th><th>刪除此權限</th></tr></thead><tbody>';
+  //render the owner row, the owner cannot be changed nor deleted
+  tablestr += '<tr><td>'+info.owner+'</td><td>檔案擁有者</td><td>N/A</td></tr>';
+  //render the writers
+  for(var i=0;i<info.writer.length;++i){
+    var access_select_string = '<select><option value="writer" selected>可編輯</option><option value="reader">可觀看</option></select>';;
+    
+    var info_user = info.writer[i];
+    tablestr += '<tr><td>'+info_user+'</td><td>'+access_select_string+'</td><td><button class="delete_permission_button">刪除</button></td></tr>';
+  }
+  
+  for(var i=0;i<info.reader.length;++i){
+    var access_select_string = '<select><option value="writer">可編輯</option><option value="reader" selected>可觀看</option></select>';
+    
+    var info_user = info.reader[i];
+    tablestr += '<tr><td>'+info_user+'</td><td>'+access_select_string+'</td><td><button class="delete_permission_button">刪除</button></td></tr>';
+  }
+  tablestr +='</tbody></table>';
+  //add the table to the panel
+  $('#filesharepanel').append(tablestr);
+  //add the change detect functions to the elements in the table
+  /*
+  $('#filesharepanel').find('select').change(function(){
+    //var permission = $(this).find('option :selected').val();
+    //var account_name = $(this).closest('tr').children('nth-child(1)');//get the account name
+    //permissionModified(account_name, permission, original_info);
+  });
+  */
+  $('#filesharepanel').find('.delete_permission_button').click(function(){
+    //var account_name = $(this).closest('tr').children('nth-child(1)');//get the account name
+    //permissionDeleted(account_name, original_info);
+    //update the dom table, delete the row
+    //console.log('11111');
+    //console.log($(this).html());
+    //console.log($(this).closest('tr').html());
+    $(this).closest('tr').remove();
+  });
+  
+  //add insert inputs
+  $('#filesharepanel').append('<hr>新增權限<br><hr>');
+  $('#filesharepanel').append('<input id="file_share_account_input" type="text"></input>');
+  $('#filesharepanel').append('<select id="file_share_permission_input"><option value="writer" selected>可編輯</option><option value="reader">可觀看</option></select>');
+  $('#filesharepanel').append('<button onclick="insertPermission();">新增</button>');
+  $('#filesharepanel').append('<hr>');
+  //add commit and cancel button
+  $('#filesharepanel').append('<button onclick="commitShareChange();">確認修改</button><button onclick="closeSharePanel();">取消</button>');
+  //add the hidden virtual_file_id
+  $('#filesharepanel').append('<input type="hidden" id="vfile_id_input" value="'+virtual_file_id+'"></input>');
+}
+function showSharePanel(){
+  /*
+    get sharing data
+  */
+  if(rightClickedNode == null) return;
+  if(rightClickedNode.virtual_file_id < 0) return;//any of the root directory or shared root directory.
+  var virtual_file_id = rightClickedNode.virtual_file_id;
+  FileController.getShareInfo(virtual_file_id, function(info){
+    //check if the user has the right to access this info
+    if(info.status == 'success'){
+      $('#filesharepanel').dialog('open');
+      //render the info
+      original_info = info.info;
+      renderShareInfo(virtual_file_id);
+      
+    }else{
+      alert('你沒有改變此檔案權限的權利');
+      return;
+    }
+  });
+  
+}
+//-------------------------------------------------------------------------
+
 function registerFileToSystem(type, filename, extension, parent_file_id, storage_file_data){
   var output = false;
   $.ajax({
@@ -84,6 +413,7 @@ function getCurrentRightClickedParentId(){
     return rightClickedNode.parent_virtual_file_id;
   }
 }
+//for ztree goto:http://www.jqueryscript.net/demo/Powerful-Multi-Functional-jQuery-Folder-Tree-Plugin-zTree/demo/en/
 var rightClickedNode = {};
 function fileOnRightClick(event, treeId, treeNode){
   //event.preventDefault();
@@ -531,7 +861,7 @@ $(document).ready(function(){
       resetFilenameDialog();
     }
   });
-  
+  $('#filesharepanel').dialog({title:'設定共享權限', height:'auto', width:'auto', autoOpen:false});
   $('#fileuploadpanel').dialog({title:'檔案上傳', height:'auto', width:'auto', autoOpen:false});
   $('#documenthostingdialog').dialog({title:'選擇檔案轉換類型', height:'auto', width:'auto', autoOpen:false});
 	$(document.body).click(function(e){

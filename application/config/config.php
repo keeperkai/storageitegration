@@ -453,6 +453,14 @@ $config['provider_info'] = array(
         'cors_resumable_upload_support'=>false,
         'permission_model'=>'link'
     ),
+    'dropbox'=>array(
+        'api_single_file_limit'=>10*1024*1024*1024-1,//10gb-1bytes
+		'copy_and_replace_support'=>true,
+		'cors_download_range_header_support'=>true,
+		'cors_download_support'=>true,
+        'cors_resumable_upload_support'=>true,
+        'permission_model'=>'link'
+    )
     
 );
 //$config['client_memory_limit'] = 100*1024*1024;//100mb, in bytes

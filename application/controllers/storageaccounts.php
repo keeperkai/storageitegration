@@ -18,7 +18,8 @@ class StorageAccounts extends CI_Controller
         //refresh all the google tokens, because the ones stored are refresh tokens
         foreach($storageaccounts as $key=>$acc){
             $acc['token'] = $this->cloudStorageModel->getAccessTokenForClient($acc);
-			$storageaccounts[$key] = $acc;
+			$acc['access_token'] = $this->cloudStorageModel->getAccessTokenForClient($acc);
+            $storageaccounts[$key] = $acc;
         }
         header('Content-Type: application/json');
         echo json_encode($storageaccounts);

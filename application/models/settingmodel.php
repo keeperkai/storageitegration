@@ -98,7 +98,8 @@ class SettingModel extends CI_Model
 				'extension'=>'xls',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -106,7 +107,8 @@ class SettingModel extends CI_Model
 				'extension'=>'xlsx',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -114,7 +116,8 @@ class SettingModel extends CI_Model
 				'extension'=>'ppt',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -122,7 +125,8 @@ class SettingModel extends CI_Model
 				'extension'=>'pptx',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -130,7 +134,8 @@ class SettingModel extends CI_Model
 				'extension'=>'doc',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -138,7 +143,8 @@ class SettingModel extends CI_Model
 				'extension'=>'docx',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -147,6 +153,7 @@ class SettingModel extends CI_Model
 				'provider'=>array(
 					'googledrive',
 					'onedrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -155,6 +162,7 @@ class SettingModel extends CI_Model
 				'provider'=>array(
 					'onedrive',
 					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -163,6 +171,7 @@ class SettingModel extends CI_Model
 				'provider'=>array(
 					'onedrive',
 					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -170,7 +179,8 @@ class SettingModel extends CI_Model
 				'extension'=>'odp',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -178,7 +188,8 @@ class SettingModel extends CI_Model
 				'extension'=>'jpg',
 				'provider'=>array(
 					'googledrive',
-					'onedrive'
+					'onedrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -186,7 +197,8 @@ class SettingModel extends CI_Model
 				'extension'=>'png',
 				'provider'=>array(
 					'googledrive',
-					'onedrive'
+					'onedrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -194,7 +206,8 @@ class SettingModel extends CI_Model
 				'extension'=>'bmp',
 				'provider'=>array(
 					'googledrive',
-					'onedrive'
+					'onedrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -202,7 +215,8 @@ class SettingModel extends CI_Model
 				'extension'=>'tiff',
 				'provider'=>array(
 					'googledrive',
-					'onedrive'
+					'onedrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -210,7 +224,8 @@ class SettingModel extends CI_Model
 				'extension'=>'psd',
 				'provider'=>array(
 					'googledrive',
-					'onedrive'
+					'onedrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -218,7 +233,8 @@ class SettingModel extends CI_Model
 				'extension'=>'png',
 				'provider'=>array(
 					'googledrive',
-					'onedrive'
+					'onedrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -226,7 +242,8 @@ class SettingModel extends CI_Model
 				'extension'=>'mp3',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -234,7 +251,8 @@ class SettingModel extends CI_Model
 				'extension'=>'aiff',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -242,7 +260,8 @@ class SettingModel extends CI_Model
 				'extension'=>'wav',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -250,7 +269,8 @@ class SettingModel extends CI_Model
 				'extension'=>'wma',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -258,7 +278,8 @@ class SettingModel extends CI_Model
 				'extension'=>'bun',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -266,7 +287,8 @@ class SettingModel extends CI_Model
 				'extension'=>'mp4',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -274,7 +296,8 @@ class SettingModel extends CI_Model
 				'extension'=>'mov',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -282,7 +305,8 @@ class SettingModel extends CI_Model
 				'extension'=>'avi',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -290,7 +314,8 @@ class SettingModel extends CI_Model
 				'extension'=>'wmv',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -298,7 +323,8 @@ class SettingModel extends CI_Model
 				'extension'=>'flv',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),
@@ -306,7 +332,8 @@ class SettingModel extends CI_Model
 				'extension'=>'mts',
 				'provider'=>array(
 					'onedrive',
-					'googledrive'
+					'googledrive',
+                    'dropbox'
 				),
 				'save_type'=>'whole'
 			),

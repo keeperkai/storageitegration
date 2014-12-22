@@ -128,12 +128,14 @@ class FileModel extends CI_Model
         foreach($vfiles as $loosefile){
             $user = $loosefile['account'];
             $loose_file_folder = $this->getLooseFilesFolderForUser($user);
+            //var_dump($loose_file_folder);
             $this->db->update('virtual_file', array('parent_virtual_file_id'=>$loose_file_folder['virtual_file_id']),array('virtual_file_id'=>$loosefile['virtual_file_id']));
         }
     }
     public function createLooseFilesFolderForUser($user){
-        $this->db->insert('virtual_file', array('file_type'=>'folder', 'name'=>'Loose Files', 'account'=>$user));
-        $q = $this->db->get_where('virtual_file', array('file_type'=>'folder', 'name'=>'Loose Files', 'account'=>$user));
+        //$this->db->insert('virtual_file', array('file_type'=>'folder', 'name'=>'Loose Files', 'account'=>$user));
+        $folder_id = $this->makeFolder($user, 'Loose Files', -1);
+        $q = $this->db->get_where('virtual_file', array('virtual_file_id'=>$folder_id));
         $r = $q->result_array();
         return $r[0];
     }
@@ -154,7 +156,39 @@ class FileModel extends CI_Model
         $r = $q->result_array();
         return $r;
     }
-	private function getPermissionsForVirtualFile($virtual_file_id){
+    /*
+        output format:
+        array(
+            'owner'=>owner account,
+            'writers'=>array(
+                account1,
+                account2,
+                ...
+            )
+            'readers'=>array(
+                reader account1,
+                reader account2,
+                ...
+            )
+        )
+    */
+    public function getPermissionsForVirtualFileStructured($virtual_file_id){
+        $permissions = $this->getPermissionsForVirtualFile($virtual_file_id);
+        $output = array('owner'=>'', 'writer'=>array(), 'reader'=>array());
+        foreach($permissions as $permit){
+            $role = $permit['role'];
+            $user = $permit['account'];
+            if($role=='owner'){
+                $output['owner'] = $user;
+            }else if($role == 'writer'){
+                $output['writer'][] = $user;
+            }else if($role == 'reader'){
+                $output['reader'][] = $user;
+            }
+        }
+        return $output;
+    }
+	public function getPermissionsForVirtualFile($virtual_file_id){
 		$q = $this->db->get_where('file_permissions', array('virtual_file_id'=>$virtual_file_id));
 		$r = $q->result_array();
 		return $r;
@@ -212,7 +246,7 @@ class FileModel extends CI_Model
 		}
 	}
 	public function inheritParentPermission($virtual_file_id){
-		$vfile = $this->getVirtualFileData($virtual_file_id);
+        $vfile = $this->getVirtualFileData($virtual_file_id);
 		$parent_id = $vfile['parent_virtual_file_id'];
 		if($parent_id == -1) return;
 		$file_permissions = $this->getPermissionsForVirtualFile($virtual_file_id);
@@ -225,6 +259,9 @@ class FileModel extends CI_Model
 			}
 		}
 	}
+    /*
+        this function adds a permission to a virtual file
+    */
 	public function addPermission($virtual_file_id, $user, $role){
 		$vfile = $this->getVirtualFileData($virtual_file_id);
 		if($vfile){
@@ -234,14 +271,16 @@ class FileModel extends CI_Model
 			if($type == 'folder'){//recurse
 				$children = $this->getChildrenVirtualFiles($virtual_file_id);
 				foreach($children as $child){
-					$this->addPermission($child['virtual_file_id']);
+					$this->addPermission($child['virtual_file_id'], $user, $role);
 				}
 			}
 		}
-		
 	}
     /*
-        add's permission in our system to a file, does not add the permission to the cloud storages. for that, use cloudstoragemodel->propagate
+        add's permission in our system to a file, does not add the permission to the cloud storages. for that, use cloudstoragemodel->propagate,
+        it is an incrementing permission, meaning if the permission in the database is smaller than the permission that we want to set,
+        we will update the database and give the user the current role we want to set instead of inserting a new one(which would be a bug)
+        
     */
 	public function addPermissionForSingleFile($virtual_file_id, $user, $role){
 		//first check if the user already has permission
@@ -265,15 +304,17 @@ class FileModel extends CI_Model
 		}else{//user doesn't have permission for this file, insert it.
 			$this->db->insert('file_permissions', array('account'=>$user, 'virtual_file_id'=>$virtual_file_id, 'role'=>$role));
 		}
+        //we don't do this in this function anymore, we use the propogate function or the set permission functons in the cloudstoragemodel
 		//if the file is hosted on google, actually add the file permission
 		//just find all storage files linked to this virtual file and for the google ones, propagate the permission
-		$this->db->select('*');
+		/*
+        $this->db->select('*');
 		$this->db->from('storage_file');
 		$this->db->join('storage_account', 'storage_account.storage_account_id = storage_file.storage_account_id', 'left');
 		$this->db->where(array('storage_file.virtual_file_id'=>$virtual_file_id));
 		$q = $this->db->get();
 		$r = $q->result_array();
-		/*
+		
 		foreach($r as $sfile){
 			if($sfile['token_type']=='googledrive'){
 				//$this->addPermissionForGoogleFile($sfile, $user, $role);
@@ -282,6 +323,108 @@ class FileModel extends CI_Model
 		}
         */
 	}
+    /*
+        this function changes a permission to a virtual file, different from add permission
+        (i)it will only change the permission if it exists.
+        (ii)it will downgrade the permission, not only upgrade.
+        
+        Take note that we should not downgrade the owner of the file
+    */
+	public function changePermission($virtual_file_id, $user, $role){
+		$vfile = $this->getVirtualFileData($virtual_file_id);
+		if($vfile){
+			$type = $vfile['file_type'];
+			//add permission for the file
+			$this->changePermissionForSingleFile($virtual_file_id, $user, $role);
+			if($type == 'folder'){//recurse
+				$children = $this->getChildrenVirtualFiles($virtual_file_id);
+				foreach($children as $child){
+					$this->changePermission($child['virtual_file_id'], $user, $role);
+				}
+			}
+		}
+	}
+    /*
+        change permission for single file, if the permission doesn't exist for this user, nothing will be done
+        take note that the owner cannot be changed
+    */
+    public function changePermissionForSingleFile($virtual_file_id, $user, $role){
+        //first check if the user is the owner
+        $permit = $this->getVirtualFilePermissionForUser($virtual_file_id, $user);
+        if($permit){
+            if($permit['role'] == 'owner') return false;
+            else{//update the permission
+                return $this->db->update('file_permissions', array('role'=>$role), array('virtual_file_id'=>$virtual_file_id, 'account'=>$user));
+            }
+        }
+        //else, user has no access to the file, so don't change anything
+        return false;
+    }
+    /*
+        does not delete the owner
+    */
+    public function deletePermission($virtual_file_id, $user){
+        $vfile = $this->getVirtualFileData($virtual_file_id);
+		if($vfile){
+			$type = $vfile['file_type'];
+			$this->deletePermissionForSingleFile($virtual_file_id, $user);
+			if($type == 'folder'){//recurse
+				$children = $this->getChildrenVirtualFiles($virtual_file_id);
+				foreach($children as $child){
+					$this->deletePermission($child['virtual_file_id'], $user);
+				}
+			}
+		}
+    }
+    /*
+        does not delete the owner
+    */
+    public function deletePermissionForSingleFile($virtual_file_id, $user){
+        //first check if the user is the owner
+        $permit = $this->getVirtualFilePermissionForUser($virtual_file_id, $user);
+        if($permit){
+            if($permit['role'] == 'owner') return false;
+            else{//delete the permission
+                return $this->db->delete('file_permissions', array('virtual_file_id'=>$virtual_file_id, 'account'=>$user));
+            }
+        }
+        //else, user has no access to the file, so don't change anything
+        return false;
+    }
+    /*
+        modifies the permissions of a virtual file according to share change
+        format of share change:
+        {
+            updated: true or false
+            permission_change:
+            {
+              user_account: writer or reader,
+              user_account2: ...
+            }
+            permission_delete:
+            [
+              user_account,
+              useraccount2,
+              ..
+            ]
+            permission_insert:
+            {
+              user_account: writer or reader
+            }
+        }
+    */
+    public function modifyShareInfo($virtual_file_id, $share_change){
+        //add the inserted permissions
+        foreach($share_change['permission_insert'] as $acc=>$role){
+            $this->addPermission($virtual_file_id, $acc, $role);
+        }
+        foreach($share_change['permission_delete'] as $acc){
+            $this->deletePermission($virtual_file_id, $acc);
+        }
+        foreach($share_change['permission_change'] as $acc=>$role){
+            $this->changePermission($virtual_file_id, $acc, $role);
+        }
+    }
 	public function registerStorageFile($storageFileData){
 		return $this->db->insert('storage_file', $storageFileData);
 	}
@@ -314,6 +457,67 @@ class FileModel extends CI_Model
 		if(sizeof($r)>0)	return $r[0];
 		else return false;
 	}
+    /*
+        register a file to the system, this includes adding to virtual_file table, storage_file table(if needed, folders don't need this),
+        adding data to file_permissions table, setting the permissions on cloud storage(if needed, like storage files on googledrive)
+        returns the virtual_file_id
+    */
+    public function registerFileToSystem($user, $file_type, $mime_type, $name, $extension, $parent_virtual_file_id, $storage_file_data){
+        $fileData = array();
+		$fileData['account'] = $user;
+		$fileData['file_type'] = $file_type;
+        $fileData['mime_type'] = $mime_type;
+		$fileData['name'] = $name;
+		$fileData['extension'] = $extension;
+		$fileData['parent_virtual_file_id'] = $parent_virtual_file_id;
+		
+        $allow_chunk = false;
+        if(sizeof($storage_file_data)>1)    $allow_chunk = true;//if the file is already chunked, it doesn't matter what extension it is
+        else if($fileData['file_type']=='folder') $allow_chunk = false;
+        else{
+            $allow_chunk = $this->settingModel->chunkAllowedForExtension($user, $fileData['extension']);
+        }
+        
+        $fileData['allow_chunk'] = $allow_chunk;
+        
+		/*
+		structure for storage_file_data:
+        array(
+            array(
+                storage_account_id
+                storage_file_type
+                byte_offset_start
+                byte_offset_end
+                storage_id
+            )
+        )
+		*/
+		$resp = true;
+		$virtual_file_id = false;
+		if($this->registerFile($fileData)){
+			$insertedfile = $this->findLatestVirtualFileWithProperties($fileData);
+			$virtual_file_id = $insertedfile['virtual_file_id'];
+			//$storage_file_data['virtual_file_id'] = $virtual_file_id;
+		
+			//add permission for the owner
+			$this->addPermission($virtual_file_id, $user, 'owner');
+			//inherit permissions from parent
+			$this->inheritParentPermission($virtual_file_id);
+			if($fileData['file_type']!='folder'){
+				//foreach storage file, register them and propagate the permissions to storage if needed
+                foreach($storage_file_data as $sfile){
+                   $sfile['virtual_file_id'] = $virtual_file_id;
+                   $this->registerStorageFileAndSetPermissionsOnStorage($sfile);
+                }
+            }
+            
+		}
+        return $virtual_file_id;
+    }
+    public function makeFolder($user, $name, $parent_virtual_file_id){
+        $vfile_id = $this->registerFileToSystem($user, 'folder', '', $name, 'dir', $parent_virtual_file_id, array());
+        return $vfile_id;
+    }
 	public function registerFile($fileData){
         return $this->db->insert('virtual_file',$fileData);
     }
@@ -472,6 +676,8 @@ class FileModel extends CI_Model
                         if($child_permission['role']!='owner'){
                             $loosefiles[] = $child_vfile;
                         }
+                    }else{//this user doesn't have the permission, this will also result in a loose file
+                        $loosefiles[] = $child_vfile;
                     }
                 }
                 //actually delete

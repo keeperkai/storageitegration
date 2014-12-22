@@ -407,7 +407,7 @@ class GoogleDriveModel extends CI_Model
         
         Note: make sure the target_account has the permissions to the file before calling this.
     */
-    public function apiCopyFile($storage_id, $target_account){
+    public function apiCopyFile($storage_id, $source_account, $target_account){
         $client = $this->setupGoogleClient($target_account);
         $drive = $this->setupDriveService($client);
         $source_file = $drive->files->get($storage_id);

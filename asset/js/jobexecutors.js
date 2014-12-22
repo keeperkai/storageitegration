@@ -1,50 +1,5 @@
 var CLIENT_MEMORY_LIMIT = 100*1024*1024;
 var CHUNK_SIZE = 4*1024*1024;
-//System operations
-function FileController(){
-
-}
-/*
-  register a virtual file to our system, along with it's storage file data on the cloud storage providers.
-  
-  Note that type is {file, folder} which is different from mimetype
-*/
-FileController.registerVirtualFileToSystem = function(mimetype, type, filename, parent_file_id, storage_file_data, callback){
-  console.log('register file to system called in filecontroller');
-  var output = false;
-	var filename_tokens = filename.split('.');
-	if(filename_tokens.length>1){
-		extension = filename_tokens[filename_tokens.length-1];
-	}else{//no extension
-		//do nothing
-		extension = 'unknown';
-	}
-	
-	mimetype = mimetype || 'application/octet-stream';
-  $.ajax({
-    url: '../../files/registerfiletosystem',
-    type: 'POST',
-    data: {
-			'mime_type': mimetype,
-    	'file_type': type,
-      'name': filename,
-      'extension': extension,
-      'parent_virtual_file_id': parent_file_id,
-			'storage_file_data': JSON.stringify(storage_file_data)
-		},
-    async: true,
-    success: function(data, textstatus, request) {
-      callback();
-    },
-    error: function(xhr, status, error) {
-      var err = xhr.responseText;
-      console.log(err);
-      alert(err);
-      alert(error);
-    }
-  });
-  return output;//outputs the virtual_file_id of the just registered file
-}
 
 //----------------------
 /*
@@ -665,7 +620,9 @@ DataUploadExecutorFactory.createDataUploadExecutor = function(storage_account, f
 		return new OneDriveDataUploadExecutor(filename, filetype, storage_account.access_token, filesize);
 	}else if(storage_account.token_type == 'googledrive'){
 		return new GoogleDriveDataUploadExecutor(filename, filetype, storage_account.access_token, filesize);
-	}
+	}else if(storage_account.token_type == 'dropbox'){
+    return new DropboxDataUploadExecutor(filename, filetype, storage_account.access_token, filesize);
+  }
 }
 /*
 Data upload/download executors load/write binary data to/from javascript from/to cloud storages
@@ -685,6 +642,146 @@ function DataUploadExecutor(filename, filetype, access_token, filesize){
 	
 }
 //concrete classes for each cloud provider
+function DropboxDataUploadExecutor(filename, filetype, access_token, filesize){
+  this.fileName = filename;
+	this.fileType = filetype || 'application/octet-stream';;
+	this.accessToken = access_token;
+	this.fileSize = filesize;
+  this.chunkUploaded = function(){};
+  this.complete = function(){};
+  this.chunkUploadUrl = '';
+  this.currentByteOffset = 0;
+  this.uploadId = '';
+}
+/*
+  commits chunk upload, returns the path of the file in the callback function argument
+*/
+DropboxDataUploadExecutor.prototype._commitUploadChunk = function(callback){
+  var executor = this;
+  if(executor.uploadId == ''){
+    console.log('trying to commit an upload on a dropbox account, but there is no upload_id to commit! stopping');
+    return;
+  }
+  function makeDir(dname, dir_callback){
+    $.ajax({
+      url: 'https://api.dropbox.com/1/fileops/create_folder',
+      type: 'POST',
+      dataType:'json',
+      headers: {
+        'Authorization': 'Bearer '+executor.accessToken,
+      },
+      data: {
+        'root':'auto',
+        'path':'/'+dname
+      },
+      async: true,
+      success: function(resp) {
+        dir_callback(resp.path);
+      },
+      error: function(xhr, status, error) {
+        //probably due to name collision
+        //do this function again
+        makeDir(dname+'_n', dir_callback);
+      }
+    });
+  }
+  //create a dir using the current timestamp
+  var dir_name = new Date().getTime()+'_SI_gen_dir';
+  //make directory
+  makeDir(dir_name, function(dirpath){
+    //commit the upload
+    $.ajax({
+      url: 'https://api-content.dropbox.com/1/commit_chunked_upload/auto'+dirpath+'/'+executor.fileName,
+      type: 'POST',
+      dataType:'json',
+      headers: {
+        'Authorization': 'Bearer '+executor.accessToken,
+      },
+      data: {
+        'overwrite':false,
+        'autorename': true,
+        'upload_id': executor.uploadId
+      },
+      async: true,
+      success: function(resp) {
+        //console.log(resp);
+        //console.log(resp.path);
+        callback(resp.path);
+      },
+      error: function(xhr, status, error) {
+        console.log(error);
+      }
+    });
+    
+  });
+  
+}
+DropboxDataUploadExecutor.prototype._uploadChunk = function(upload_id, data, callback){
+  var executor = this;
+  var url = 'https://api-content.dropbox.com/1/chunked_upload?';
+  if(upload_id == ''){
+    url = url+'offset=0';
+  }else{
+    url = url+'upload_id='+upload_id+'&offset='+executor.currentByteOffset;
+  }
+  $.ajax({
+    url: url,
+    type: 'PUT',
+    processData: false,
+    dataType: 'json',
+    headers: {
+      'Authorization': 'Bearer '+executor.accessToken,
+      //'Content-Type': executor.fileType,
+    },
+    data: data,
+    async: true,
+    success: function(resp) {
+      callback(resp);
+    },
+    error: function(xhr, status, error) {
+      var err = xhr.responseText;
+      console.log(err);
+      console.log(error);
+    }
+  });
+}
+  
+DropboxDataUploadExecutor.prototype.uploadChunk = function(data){
+  var executor = this;
+  function chunkuploadedinternal(resp){
+    if(executor.uploadId == '') executor.uploadId = resp.upload_id;
+    executor.currentByteOffset = resp.offset;
+    //check if the whole file is finished by checking the response offset
+    //if the whole file is finished call both chunk uploaded and complete
+    //if not then only call chunk uploaded
+    executor.chunkUploaded(resp);
+    if(resp.offset>=executor.fileSize){// whole thing done, we need to commit the chunk upload and then get the file path and pass as argument in complete
+      executor._commitUploadChunk(function(commit_resp){
+        executor.complete(commit_resp);
+      });
+    }
+  }
+	executor._uploadChunk(executor.uploadId, data, chunkuploadedinternal);
+}
+DropboxDataUploadExecutor.prototype.uploadWhole = function(data){
+  var chunksize = 10*1024*1024;
+  var executor = this;
+  executor.chunkUploaded = function(){
+    uploadnextchunk();  
+  };
+  function uploadnextchunk(){
+    //console.log('upload next chunk called, current offset='+executor.currentByteOffset+', filesize='+executor.fileSize);
+    if(executor.currentByteOffset>=executor.fileSize) return;
+    var offset_start = executor.currentByteOffset;
+    var offset_end = (offset_start+chunksize>executor.fileSize)?executor.fileSize-1:offset_start+chunksize-1;//inclusive offset end, but when we blob.slice, we need to add 1 when slicing
+    var chunk_data = data.slice(offset_start, offset_end+1);
+    
+    executor.uploadChunk(chunk_data);
+    
+  }
+  uploadnextchunk();
+  
+}
 function GoogleDriveDataUploadExecutor(filename, filetype, access_token, filesize){
 	this.currentByteOffset = 0;
 	this.fileName = filename;
@@ -908,13 +1005,52 @@ DataDownloadExecutorFactory.createDataDownloadExecutor = function(storage_accoun
 		return new OneDriveDataDownloadExecutor(storage_account.access_token, file_id);
 	}else if(storage_account.token_type == 'googledrive'){
 		return new GoogleDriveDataDownloadExecutor(storage_account.access_token, file_id);
-	}
+	}else if(storage_account.token_type == 'dropbox'){
+    return new DropboxDataDownloadExecutor(storage_account.access_token, file_id);
+  }
 }
 function DataDownloadExecutor(access_token, file_id){//interface
 	//function downloadChunk(byte_offset_start, byte_offset_end, callback)//callback(data:blob)
 	//function downloadWhole(callback)//callback(data:blob)
 }
 //concrete classes for each cloud provider
+function DropboxDataDownloadExecutor(access_token, file_id){//file_id is actually the path to the file, including the '/'
+  this.accessToken = access_token;
+	this.fileId = file_id;
+}
+DropboxDataDownloadExecutor.prototype.downloadChunk = function(byte_offset_start, byte_offset_end, callback){
+  var executor = this;
+  var oReq = new XMLHttpRequest();
+  oReq.open("GET", 'https://api-content.dropbox.com/1/files/auto'+executor.fileId, true);
+  oReq.responseType = "blob";
+  oReq.setRequestHeader('Authorization', 'Bearer '+executor.accessToken);
+  oReq.setRequestHeader('Range', 'bytes='+byte_offset_start+'-'+byte_offset_end);
+  oReq.onload = function(oEvent) {
+    //var blob = new Blob([oReq.response], {type: oReq.getResponseHeader('content-type')});
+    var blob = oReq.response;
+    //console.log('response is: '+blob);
+    callback(blob);
+    //delete oReq;
+  };
+  oReq.send();
+}
+DropboxDataDownloadExecutor.prototype.downloadWhole = function(callback){
+  var executor = this;
+  var oReq = new XMLHttpRequest();
+  oReq.open("GET", 'https://api-content.dropbox.com/1/files/auto'+executor.fileId, true);
+  oReq.responseType = "blob";
+  oReq.setRequestHeader('Authorization', 'Bearer '+executor.accessToken);
+  oReq.onload = function(oEvent) {
+    //var blob = new Blob([oReq.response], {type: oReq.getResponseHeader('content-type')});
+    var blob = oReq.response;
+    //console.log('response is: '+blob);
+    //console.log(blob);
+    callback(blob);
+    //delete oReq;
+  };
+  oReq.send();
+}
+
 function GoogleDriveDataDownloadExecutor(access_token, file_id){
 	this.accessToken = access_token;
 	this.fileId = file_id;
