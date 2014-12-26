@@ -378,8 +378,29 @@ class Files extends CI_Controller
             exit(0);
         }
     }
-    
-    
+    /*
+        this method returns a link to the shared/not shared file on the cloud storage provider it resides on, this only works for files that are
+        not allowed to be chunked(configured files).
+        we will look at the user's permission to the file on our storage and decide what kind of link(edit or preview) the user will get
+        
+        output: array(
+            status: 'success' or 'error' or 'need_account'
+            errorMessage: a message describing why the user can't get a link to the file, such as "You don't have the permissions to access the file"
+            type: 'edit' or 'preview'
+            link: the url we return to the user agent
+        )
+    */
+    public function getEditViewLink(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $virtual_file_id = $this->input->post('virtual_file_id');
+        $result = $this->fileModel->getEditViewLink($user, $virtual_file_id);
+        header('Content-Type: application/json');
+        echo json_encode($result);
+    }
     /*
     public function testFileTree(){
         $user = 'keeperkai@msn.com';

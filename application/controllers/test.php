@@ -363,4 +363,79 @@ class Test extends CI_Controller
         fclose($img);
         echo json_encode($output);
     }
+    public function testdropboxgetsharedlink(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $storage_accounts = $this->storageAccountModel->getStorageAccountsOfProvider($user, 'dropbox');
+        $storage_id = $this->input->post('storage_id');
+        foreach($storage_accounts as $acc){
+            $output[] = $this->dropboxModel->getSharedLink($acc, $storage_id);
+        }
+        header('Content-Type: application/json');
+        echo json_encode($output);
+    }
+    public function testdropboxgetpreviewlink(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $storage_accounts = $this->storageAccountModel->getStorageAccountsOfProvider($user, 'dropbox');
+        $storage_id = $this->input->post('storage_id');
+        foreach($storage_accounts as $acc){
+            $output[] = $this->dropboxModel->getPreviewLink($acc, $storage_id);
+        }
+        header('Content-Type: application/json');
+        echo json_encode($output);
+    }
+    public function testdropboxgetmedialink(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $storage_accounts = $this->storageAccountModel->getStorageAccountsOfProvider($user, 'dropbox');
+        $storage_id = $this->input->post('storage_id');
+        foreach($storage_accounts as $acc){
+            $output[] = $this->dropboxModel->getMediaLink($acc, $storage_id);
+        }
+        header('Content-Type: application/json');
+        echo json_encode($output);
+    }
+    public function testGetLinks(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $output = array();
+        $storage_accounts = $this->storageAccountModel->getStorageAccounts($user);
+        $storage_id = $this->input->post('storage_id');
+        foreach($storage_accounts as $acc){
+            $output[] = array(
+                'preview'=>$this->cloudStorageModel->getPreviewLink($acc, $storage_id),
+                'edit'=>$this->cloudStorageModel->getEditLink($acc, $storage_id)
+            );
+        }
+        header('Content-Type: application/json');
+        echo json_encode($output);
+    }
+    public function testGetOnedriveEmbed(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $output = array();
+        $storage_accounts = $this->storageAccountModel->getStorageAccounts($user);
+        $storage_id = $this->input->post('storage_id');
+        foreach($storage_accounts as $acc){
+            $output = $this->oneDriveModel->getEmbedData($acc, $storage_id);
+        }
+        header('Content-Type: text/plain');
+        echo $output;
+    }
 }

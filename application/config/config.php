@@ -415,7 +415,9 @@ $config['provider_info'] = array(
 		'cors_download_range_header_support'=>true,
 		'cors_download_support'=>true,
         'cors_resumable_upload_support'=>true,
-        'permission_model'=>'set'
+        'permission_model'=>'set',
+        'need_account_for_preview'=>true,
+        'need_account_for_edit'=>true
     ),
     'onedrive'=>array(
         'extension_capability_map'=>array(
@@ -451,7 +453,9 @@ $config['provider_info'] = array(
 		'cors_download_range_header_support'=>false,
 		'cors_download_support'=>false,
         'cors_resumable_upload_support'=>false,
-        'permission_model'=>'link'
+        'permission_model'=>'link',
+        'need_account_for_preview'=>false,
+        'need_account_for_edit'=>false
     ),
     'dropbox'=>array(
         'api_single_file_limit'=>10*1024*1024*1024-1,//10gb-1bytes
@@ -459,7 +463,9 @@ $config['provider_info'] = array(
 		'cors_download_range_header_support'=>true,
 		'cors_download_support'=>true,
         'cors_resumable_upload_support'=>true,
-        'permission_model'=>'link'
+        'permission_model'=>'link',
+        'need_account_for_preview'=>false,
+        'need_account_for_edit'=>false
     )
     
 );

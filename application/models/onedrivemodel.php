@@ -111,6 +111,68 @@ class OneDriveModel extends CI_Model
 		//$resp_obj = json_decode($response, true);
 
 	}
+    public function getEditLink($storage_account, $storage_id){
+    //GET https://apis.live.net/v5.0/file.a6b2a7e8f2515e5e.A6B2A7E8F2515E5E!126/shared_edit_link?access_token=ACCESS_TOKEN
+        $access_token = $this->getAccessToken($storage_account);
+        $ch = curl_init();
+        $curlConfig = array(
+            CURLOPT_URL            => "https://apis.live.net/v5.0/".$storage_id."/shared_edit_link?access_token=".$access_token,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER =>array(
+                'Connection: close'
+            )
+        );
+        curl_setopt_array($ch, $curlConfig);
+        $result = curl_exec($ch);
+        $result = json_decode($result, true);
+        curl_close($ch);
+        return $result['link'];
+    }
+    public function getPreviewLink($storage_account, $storage_id){
+        /*
+        //we don't do this now, because it revokes the edit token, now we use the embed link and parse the src of the embed iframe to gain a preview url, which doesn't interfere
+        //with the edit link
+        //GET https://apis.live.net/v5.0/file.a6b2a7e8f2515e5e.A6B2A7E8F2515E5E!126/shared_read_link?access_token=ACCESS_TOKEN
+        $access_token = $this->getAccessToken($storage_account);
+        $ch = curl_init();
+        $curlConfig = array(
+            CURLOPT_URL            => "https://apis.live.net/v5.0/".$storage_id."/shared_read_link?access_token=".$access_token,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER =>array(
+                'Connection: close'
+            )
+        );
+        curl_setopt_array($ch, $curlConfig);
+        $result = curl_exec($ch);
+        $result = json_decode($result, true);
+        curl_close($ch);
+        
+        return $result['link'];
+        */
+        $iframe_html = $this->getEmbedData($storage_account, $storage_id);
+        //parse the src attribute of the iframe html
+        $src_offset = strpos($iframe_html, 'src');
+        $link_start_offset = strpos($iframe_html, '"', $src_offset)+1;
+        $link_end_offset = strpos($iframe_html, '"', $link_start_offset)-1;
+        $link_length = $link_end_offset - $link_start_offset + 1;
+        return substr($iframe_html, $link_start_offset, $link_length);
+    }
+    public function getEmbedData($storage_account, $storage_id){
+        $access_token = $this->getAccessToken($storage_account);
+        $ch = curl_init();
+        $curlConfig = array(
+            CURLOPT_URL            => "https://apis.live.net/v5.0/".$storage_id."/embed?access_token=".$access_token,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER =>array(
+                'Connection: close'
+            )
+        );
+        curl_setopt_array($ch, $curlConfig);
+        $result = curl_exec($ch);
+        $result = json_decode($result, true);
+        curl_close($ch);
+        return $result['embed_html'];
+    }
     private function getRootId($storage_account){
         $access_token = $this->getAccessToken($storage_account);
         $root_data_url = 'https://apis.live.net/v5.0/me/skydrive?access_token='.$access_token;

@@ -1,7 +1,19 @@
-//share panel related
-function checkShareChanges(){
-
+//Edit/Preview Link related
+function editOrPreview(){
+  var virtual_file_id = rightClickedNode.virtual_file_id;
+  FileController.getEditViewLink(virtual_file_id, function(resp){
+    if(resp.status == 'error'){
+      alert(resp.errorMessage);
+    }else if(resp.status == 'need_account'){
+      if(confirm(resp.errorMessage + '，轉載至帳號管理頁面?')){
+        window.location.href = './manageaccount';
+      }
+    }else{//success
+      window.open(resp.link);
+    }
+  });
 }
+//share panel related
 function getUserRole(user, info){
   if(info.owner == user){
     return 'owner';

@@ -12,7 +12,7 @@ class CloudStorageModel extends CI_Model
 		$this->load->model('onedrivemodel', 'oneDriveModel');
         $this->load->model('dropboxmodel', 'dropboxModel');
     }
-	public function getCloudStorageModel($provider){
+    public function getCloudStorageModel($provider){
 		if($provider == 'googledrive'){
 			return $this->googleDriveModel;
 		}else if($provider == 'onedrive'){
@@ -31,7 +31,7 @@ class CloudStorageModel extends CI_Model
 		$cs_model = $this->getCloudStorageModel($storage_account['token_type']);
 		return $cs_model->getAccountQuotaInfo($storage_account);
     }
-	/*
+    /*
 		gets the access token for the account, if the current access token in the database is expired, it will refresh
 		the access token.
 		Note that this is not just the access token itself, but can possibly be a datastructor with a lot more data.
@@ -57,6 +57,14 @@ class CloudStorageModel extends CI_Model
 		$cs_model = $this->getCloudStorageModel($storage_account['token_type']);
 		$cs_model->deleteStorageFile($storage_id, $storage_account);
 	}
+    public function getEditLink($storage_account, $storage_id){
+        $cs_model = $this->getCloudStorageModel($storage_account['token_type']);
+        return $cs_model->getEditLink($storage_account, $storage_id);
+    }
+    public function getPreviewLink($storage_account, $storage_id){
+        $cs_model = $this->getCloudStorageModel($storage_account['token_type']);
+        return $cs_model->getPreviewLink($storage_account, $storage_id);
+    }
     //functions that MUST BE SUPPORTED by 'set' type permission_model providers.-----------------------------------------------------
 	/*
 		adds the permissions for a user to access a storage file on the cloud storage if needed.

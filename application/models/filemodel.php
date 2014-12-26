@@ -199,6 +199,14 @@ class FileModel extends CI_Model
         if(sizeof($r)>0) return $r[0];
         else return false;
     }
+    public function getUserRoleForVirtualFile($virtual_file_id, $user){
+        $permit = $this->getVirtualFilePermissionForUser($virtual_file_id, $user);
+        if(!$permit){
+            return false;
+        }else{
+            return $permit['role'];
+        }
+    }
 	private function getVirtualFileData($virtual_file_id){
 		$q = $this->db->get_where('virtual_file', array('virtual_file_id'=>$virtual_file_id));
 		$r = $q->result_array();
@@ -424,6 +432,12 @@ class FileModel extends CI_Model
         foreach($share_change['permission_change'] as $acc=>$role){
             $this->changePermission($virtual_file_id, $acc, $role);
         }
+        //propagate the permissions if necessary
+        //get all storage files of the virtual file
+        $sfiles_with_account_info = $this->getStorageDataForVirtualFile($virtual_file_id);
+        foreach($sfiles_with_account_info as $sfile){
+            $this->propagateStorageFilePermissionToCloudStorage($sfile);
+        }
     }
 	public function registerStorageFile($storageFileData){
 		return $this->db->insert('storage_file', $storageFileData);
@@ -609,7 +623,7 @@ class FileModel extends CI_Model
 		return $output;
 	}
     
-    public function hasAccess($user, $file_id, $role){
+    public function hasAccess($user, $virtual_file_id, $role){
         if($file_id === -1) return true;
         /*
         $q = $this->db->get_where('virtual_file', array('virtual_file_id'=>$file_id));
@@ -623,7 +637,7 @@ class FileModel extends CI_Model
         $acc = $r[0];
         return ($acc['account'] === $user);
         */
-        $q = $this->db->get_where('file_permissions', array('virtual_file_id'=>$file_id, 'account'=>$user));
+        $q = $this->db->get_where('file_permissions', array('virtual_file_id'=>$virtual_file_id, 'account'=>$user));
         $r = $q->result_array();
         if(sizeof($r)>0){
             $permit = $r[0];
@@ -754,6 +768,74 @@ class FileModel extends CI_Model
             $output[$parent_id] = true;
         }
         return $output;
+    }
+    /*
+    this method returns a link to the shared/not shared file on the cloud storage provider it resides on, this only works for files that are
+    not allowed to be chunked(configured files).
+    we will look at the user's permission to the file on our storage and decide what kind of link(edit or preview) the user will get
+    
+    output: array(
+        status: 'success' or 'error' or 'need_account'
+        errorMessage: a message describing why the user can't get a link to the file, such as "You don't have the permissions to access the file"
+        type: 'edit' or 'preview'
+        link: the url we return to the user agent
+    )
+    */
+    public function getEditViewLink($user, $virtual_file_id){
+        //check what kind of permission does the user have to the file
+        $role = $this->getUserRoleForVirtualFile($virtual_file_id, $user);
+        if($role == false){
+            return array('status'=>'error', 'errorMessage'=>'你沒有存取該檔案之權利');
+        }else{
+            //check if the virtual file is a file that can be previwed/edited online, for instance, folders cannot be previewed
+            $vfile = $this->getVirtualFileData($virtual_file_id);
+            if($vfile['file_type'] == 'folder') return array('status'=>'error', 'errorMessage'=>'此類型檔案無法線上編輯或者預覽');
+            //get the owner account, and the storage_id of the file
+            $storage_data = $this->getStorageDataForVirtualFile($virtual_file_id);
+            //check if there is only 1 storage file, if not, reject the preview/edit
+            if(sizeof($storage_data)>1) return array('status'=>'error', 'errorMessage'=>'檔案已被切割，無法在線上預覽');
+            else if(sizeof($storage_data)==0) return array('status'=>'error', 'errorMessage'=>'檔案在雲端硬碟提供者上的資料消失了');
+            //only 1 storage file, but we still need to check if the file is hosted on a provider that 'need_account_for_preview'/'need_account_for_edit'
+            $provider_info = $this->config->item('provider_info');
+            $owner_account = $storage_data[0];//here we directly use the joined storage_account and storage_file data as the storage_account
+            $provider = $owner_account['token_type'];
+            //get the number of user accounts of the provider
+            $num_user_accounts = sizeof($this->storageAccountModel->getStorageAccountsOfProvider($user, $provider));
+            //it works kinda like polymorphism in O.O., since the array has all the fields of the storage account, it will work.
+            $storage_id = $storage_data[0]['storage_id'];
+            $link_type = '';
+            $link_url= '';
+            if($this->roleCompare($role, 'writer')>=0){
+                if($provider_info[$provider]['need_account_for_edit']&&$num_user_accounts==0){
+                    //the provider's link needs the user to be logged in to one of their accounts
+                    //but the user doesn't have an account on the provider, output error
+                    return array(
+                        'status'=>'need_account',
+                        'errorMessage'=>'該檔案存放在'.$provider.'雲端硬碟上，需要您以該種帳號登入才能線上編輯，請連結至少一個'.$provider.'帳號'
+                    );
+                }
+                //return edit link
+                $link_type = 'edit';
+                $link_url = $this->cloudStorageModel->getEditLink($owner_account, $storage_id);
+            }else{
+                if($provider_info[$provider]['need_account_for_edit']&&$num_user_accounts==0){
+                    //the provider's link needs the user to be logged in to one of their accounts
+                    //but the user doesn't have an account on the provider, output error
+                    return array(
+                        'status'=>'need_account',
+                        'errorMessage'=>'該檔案存放在'.$provider.'雲端硬碟上，需要您以該種帳號登入才能線上預覽，請連結至少一個'.$provider.'帳號'
+                    );
+                }
+                //return preview link
+                $link_type = 'preview';
+                $link_url = $this->cloudStorageModel->getPreviewLink($owner_account, $storage_id);
+            }
+            return array(
+                'status'=>'success',
+                'type'=>$link_type,
+                'link'=>$link_url
+            );
+        }
     }
 	//new system--------------------------------------------------------------------------------------------
     public function deleteDirectory($file){
@@ -926,4 +1008,5 @@ class FileModel extends CI_Model
         $acc = $r[0];
         return (($file['type'] === 'dir')&&($acc['account'] === $user));
     }
+    
 }

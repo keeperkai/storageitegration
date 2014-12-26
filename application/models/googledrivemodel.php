@@ -70,7 +70,7 @@ class GoogleDriveModel extends CI_Model
 		$token = $token_struct['access_token'];
 		return $token;
 	}
-	public function deleteStorageFile($storage_id, $storage_account){
+    public function deleteStorageFile($storage_id, $storage_account){
 		$client = $this->setupGoogleClient($storage_account);
 		$service = $this->setupDriveService($client);
         try{
@@ -79,6 +79,18 @@ class GoogleDriveModel extends CI_Model
         
         }
 	}
+    //for google drive the alternate link is the .../storage_id/edit page
+    //it will use the user account to decide whether or not the user can edit/preview the file
+    public function getEditLink($storage_account, $storage_id){
+        //do a get request for the file and get the alternate link
+        $client = $this->setupGoogleClient($storage_account);
+		$service = $this->setupDriveService($client);
+        $google_file = $service->files->get($storage_id);
+        return $google_file->getAlternateLink();
+    }
+    public function getPreviewLink($storage_account, $storage_id){
+        return $this->getEditLink($storage_account, $storage_id);
+    }
 	//permission functions
 	/*
 		this function adds the permission for a file, which enables a user on our platform to access it.
@@ -124,7 +136,7 @@ class GoogleDriveModel extends CI_Model
 		}
 	}
     /*
-        adds the permissions to a file for aN account ON THE STORAGE PROVIDER,
+        adds the permissions to a file for an account ON THE STORAGE PROVIDER,
         $storage_account is the account that currently has the owner privileges to the file.
     */
     public function addPermissionForUserIdOnProvider($user_id, $storage_id, $storage_account, $role){

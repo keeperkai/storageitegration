@@ -10,6 +10,7 @@
 <li onclick='return showUploadPanel();'>上傳檔案至此資料夾</li>
 <li onclick='return deleteSelectedFiles();'>刪除已選擇之檔案(可按住crtl+滑鼠左鍵重複選擇)</li>
 <li onclick='return showSharePanel();'>與其他使用者共用</li>
+<li onclick='return editOrPreview();'>編輯/檢視</li>
 </ul>
 </div>
 <div id='fileuploaddialog' hidden>檔案上傳中，請稍候</div>
