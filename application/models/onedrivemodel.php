@@ -396,14 +396,24 @@ class OneDriveModel extends CI_Model
         rewind($file);
         return $result['id'];
     }
-    /*
-        copies a file from $source_account to $target_account on the storage provider through api calls, so we don't need to actually transfer the data.
-        onedrive does not allow copying files between accounts.
-    */
-    /*
-    public function apiCopyFileBetweenAccounts($source_account, $storage_id, $target_account){
-        
+    public function getDownloadLink($storage_id, $owner_account, $user){
+        //GET https://apis.live.net/v5.0/file.a6b2a7e8f2515e5e.A6B2A7E8F2515E5E!126/content?suppress_redirects=true?access_token=ACCESS_TOKEN
+        $access_token = $this->getAccessToken($owner_account);
+        $ch = curl_init('https://apis.live.net/v5.0/'.$storage_id.'/content?suppress_redirects=true&access_token='.$access_token);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        $result = curl_exec($ch);
+        $result = json_decode($result, true);
+        curl_close($ch);
+        //var_dump($result);
+        /*
+            array(
+                'location'=> url to download
+            )
+        */
+        return array(
+            'status'=>'success',
+            'link'=>$result['location'].'&download=true'//perhaps we won't add download=true for the preview version... it looks better than the embed link we use now
+        );
     }
-    */
 
 }

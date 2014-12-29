@@ -77,13 +77,29 @@ class CloudStorageModel extends CI_Model
 		}
 	}
     /*
-        adds the permissions to a file for aN account ON THE STORAGE PROVIDER,
+        adds the permissions to a file for an account ON THE STORAGE PROVIDER,
         $storage_account is the account that currently has the owner privileges to the file.
     */
     public function addPermissionForUserIdOnProvider($user_id, $storage_id, $storage_account, $role){
         $cs_model = $this->getCloudStorageModel($storage_account['token_type']);
 		if(method_exists ( $cs_model , 'addPermissionForUserIdOnProvider')){
 			$cs_model->addPermissionForUserIdOnProvider($user_id, $storage_id, $storage_account, $role);
+		}
+    }
+    /*
+        set permission for user to a storage file, different from addpermissionforuser, this actually sets the permission even if it was
+        lower than previously set
+    */
+    public function setPermissionForUser($storage_id, $storage_account, $user, $role){
+        $cs_model = $this->getCloudStorageModel($storage_account['token_type']);
+		if(method_exists ( $cs_model , 'setPermissionForUser')){
+			$cs_model->setPermissionForUser($storage_id, $storage_account, $user, $role);
+		}
+    }
+    public function deletePermissionForUser($storage_id, $storage_account, $user){
+        $cs_model = $this->getCloudStorageModel($storage_account['token_type']);
+		if(method_exists ( $cs_model , 'deletePermissionForUser')){
+			$cs_model->deletePermissionForUser($storage_id, $storage_account, $user);
 		}
     }
     //end of 'set' type-----------------------------------------------------------------------------------------------------------------
@@ -175,4 +191,24 @@ class CloudStorageModel extends CI_Model
         }
         return false;
     }
+    /*
+        get's the authenticated download link of a storage file, for providers that don't support preauthenticated download links, use the access_token
+        of the current user to get a link(so if this file is not owned by the owner, the access_token will not be stolen).
+        For pre-authenticated providers, we can just ignore the user.
+        output:
+        array(
+            status:'success' or 'error' or 'need_account'
+            errorMessage: msg of the error or the type of account needed explained to the user
+            link: the dl link that can be used in a browser to directly download the file
+        )
+    */
+    public function getDownloadLink($storage_id, $owner_account, $user){
+        $cs_model = $this->getCloudStorageModel($owner_account['token_type']);
+        if(method_exists ( $cs_model , 'getDownloadLink')){
+			return $cs_model->getDownloadLink($storage_id, $owner_account, $user);
+		}else{
+            throw new Exception('Trying to to get a download link from a provider that does not support this');
+        }
+    }
+    
 }

@@ -95,7 +95,7 @@ class GoogleDriveModel extends CI_Model
 	/*
 		this function adds the permission for a file, which enables a user on our platform to access it.
 		Note that in this case all accounts of type(googledrive) owned by the user will have access to it.
-	*/
+    */
 	public function addPermissionForUser($storage_id, $storage_account, $user, $role){
 		//sfile is a join of storage_file and storage_account, so it contains all the necessary data for this single storage file.
 		//adds the permissions to the storage files on gdrive
@@ -110,30 +110,7 @@ class GoogleDriveModel extends CI_Model
 		//see if the file already has a permission for that user on google
 		foreach($permission_id_list as $uid){
 			$this->addPermissionForUserIdOnProvider($uid, $storage_id, $storage_account, $role);
-            /*
-            $existing_perm = false;
-			foreach($permits as $fperm){
-				if($fperm['id']==$uid){
-					$existing_perm = $fperm;
-					break;
-				}
-			}
-			//update existing perm or insert a new one
-			if($existing_perm){//update
-				if($this->fileModel->roleCompare($role, $existing_perm['role'])>0){
-					$permission = $service->permissions->get($sfile['storage_id'], $uid);
-					$permission->setRole($role);
-					$service->permissions->update($sfile['storage_id'], $uid, $permission);
-				}
-			}else{//insert new one
-				$newPermission = new Google_Permission();
-				$newPermission->setId($uid);
-				$newPermission->setType('user');
-				$newPermission->setRole($role);
-				$service->permissions->insert($sfile['storage_id'], $newPermission);
-			}
-            */
-		}
+        }
 	}
     /*
         adds the permissions to a file for an account ON THE STORAGE PROVIDER,
@@ -168,7 +145,106 @@ class GoogleDriveModel extends CI_Model
             $service->permissions->insert($storage_id, $newPermission);
         }
     }
-	private function getPermissionIds($user){
+    public function setPermissionForUser($storage_id, $storage_account, $user, $role){
+		//sfile is a join of storage_file and storage_account, so it contains all the necessary data for this single storage file.
+		//adds the permissions to the storage files on gdrive
+		//setup the client and get the list of permissions on gdrive for the file
+		//$storage_account = $this->storageAccountModel->getStorageAccountWithId($storage_account_id);
+		$client = $this->setupGoogleClient($storage_account);
+		$service = $this->setupDriveService($client);
+		$permissions = $service->permissions->listPermissions($storage_id);
+		$provider_permissions = $permissions->getItems();
+        //var_dump($provider_permissions);
+        /*
+        array of:(these kinds of objects)
+        object(Google_Service_Drive_Permission)#41 (17) {
+            ["additionalRoles"]=>
+            NULL
+            ["authKey"]=>
+            NULL
+            ["domain"]=>
+            string(9) "gmail.com"
+            ["emailAddress"]=>
+            string(21) "keeperkaigg@gmail.com"
+            ["etag"]=>
+            string(57) ""Lie3Y624-6bAlCGsnUSYyb6P-dU/gjFB-hZaNhsSE3crTGN7r8KcKLE""
+            ["id"]=>
+            string(20) "09392245092114565377"//this is actually the permission id of the user
+            ["kind"]=>
+            string(16) "drive#permission"
+            ["name"]=>
+            string(10) "Kai Keeper"
+            ["photoLink"]=>
+            NULL
+            ["role"]=>
+            string(5) "owner"
+            ["selfLink"]=>
+            string(103) "https://www.googleapis.com/drive/v2/files/0B5RzcMP4KMEsbS1xQjBlYWhTNGM/permissions/09392245092114565377"
+            ["type"]=>
+            string(4) "user"
+            ["value"]=>
+            NULL
+            ["withLink"]=>
+            NULL
+            ["collection_key":protected]=>
+            string(5) "items"
+            ["modelData":protected]=>
+            array(0) {
+            }
+            ["processed":protected]=>
+            array(0) {
+            }
+          }
+        */
+        //turn the provider_permissions into a map, with the user_id(user permission_id) as key
+        $provider_permissions = array_to_map('id', $provider_permissions);
+		//find the user's google drive permission id;
+		$permission_id_list = $this->getPermissionIds($user);
+        $owner_uid = $storage_account['permission_id'];
+        //see if the file already has a permission for that user on google
+        foreach($permission_id_list as $uid){
+			if($uid == $owner_uid) continue;//don't need to set the permission for the owner
+            $this->setPermissionForUserIdOnProvider($service, $provider_permissions, $uid, $storage_id, $role);
+        }
+	}
+    public function setPermissionForUserIdOnProvider($service, $provider_permissions, $user_id, $storage_id, $role){
+        if($role == 'owner') $role = 'writer';//because for a user that has owner level privilege, the other accounts of his should only have writer access
+        //update existing perm or insert a new one
+        if(array_key_exists($user_id, $provider_permissions)){//update
+            if($provider_permissions[$user_id]['role'] == 'owner') return;//don't set the owner
+            $permission = $provider_permissions[$user_id];//$service->permissions->get($storage_id, $user_id);
+            $permission->setRole($role);
+            $service->permissions->update($storage_id, $user_id, $permission);
+        }else{//insert new one
+            $newPermission = new Google_Service_Drive_Permission();
+            $newPermission->setId($user_id);
+            $newPermission->setType('user');
+            $newPermission->setRole($role);
+            $service->permissions->insert($storage_id, $newPermission);
+        }
+    }
+    public function deletePermissionForUser($storage_id, $storage_account, $user){
+		//sfile is a join of storage_file and storage_account, so it contains all the necessary data for this single storage file.
+		//adds the permissions to the storage files on gdrive
+		//setup the client and get the list of permissions on gdrive for the file
+		//$storage_account = $this->storageAccountModel->getStorageAccountWithId($storage_account_id);
+		$client = $this->setupGoogleClient($storage_account);
+		$service = $this->setupDriveService($client);
+		$permissions = $service->permissions->listPermissions($storage_id);
+		$provider_permissions = $permissions->getItems();
+		//find the user's google drive permission id;
+		$permission_id_list = $this->getPermissionIds($user);
+		$provider_permissions = array_to_map('id', $provider_permissions);//use user permission id as key
+        foreach($permission_id_list as $uid){
+			//$perm_to_delete = $service->permissions->get($storage_id, $uid);
+            //$service->permissions->delete($perm_to_delete);
+            //first check if the user's account exists
+            if(array_key_exists($uid, $provider_permissions)){
+                $service->permissions->delete($storage_id, $uid);
+            }//if the permission for this uid doesn't exist then there is no need to delete it.
+        }
+	}
+    private function getPermissionIds($user){
 		$q = $this->db->get_where('storage_account', array('account'=>$user, 'token_type'=>'googledrive'));
 		$r = $q->result_array();
 		if(sizeof($r)>0){
@@ -180,6 +256,7 @@ class GoogleDriveModel extends CI_Model
 		}
 		return false;
 	}
+    //------------------------------------------------------------------------------------------
     private function getFilesUnderFolder($folder_id, $storage_account){
         $pageToken = NULL;
         $client = $this->setupGoogleClient($storage_account);
@@ -439,5 +516,26 @@ class GoogleDriveModel extends CI_Model
             return $result->getId();
         }
         return NULL;
+    }
+    public function getDownloadLink($storage_id, $owner_account, $user){
+        //first check if the user has a googledrive account, if not, output need_account
+        $gdrive_accounts = $this->storageAccountModel->getStorageAccountsOfProvider($user, 'googledrive');
+        if(sizeof($gdrive_accounts)==0){
+            return array(
+                'status'=>'need_account',
+                'errorMessage'=>'您需要至少一個google drive帳號才能下載此檔案，請連結一個google drive帳號至本系統'
+            );
+        }
+        //user has at least 1 gdrive account, use this user's account to get the downloadurl of the file, and use the access_token to download it.
+        $storage_account = $gdrive_accounts[0];
+        $client = $this->setupGoogleClient($storage_account);
+        $drive = $this->setupDriveService($client);
+        $google_api_file = $drive->files->get($storage_id);
+        $dl_link = $google_api_file->getDownloadUrl();
+        $dl_link .= '&access_token='.$this->getAccessTokenForClient($storage_account);
+        return array(
+            'status'=>'success',
+            'link'=>$dl_link
+        );
     }
 }

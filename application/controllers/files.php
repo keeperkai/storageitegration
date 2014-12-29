@@ -401,13 +401,53 @@ class Files extends CI_Controller
         header('Content-Type: application/json');
         echo json_encode($result);
     }
-    /*
-    public function testFileTree(){
-        $user = 'keeperkai@msn.com';
-        $rootdir_file_id = -1;
-        $recurse = true;
-        $filetree = $this->fileModel->getFileTree($user, $rootdir_file_id, $recurse);
-        echo json_encode($filetree);
+    public function getDownloadLink(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $virtual_file_id = $this->input->post('virtual_file_id');
+        $result = $this->fileModel->getDownloadLink($virtual_file_id, $user);
+        header('Content-Type: application/json');
+        echo json_encode($result);
     }
-    */
+    public function downloadFromServer($virtual_file_id){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        //check if user has access
+        if(!$this->fileModel->hasAccess($user, $virtual_file_id, 'reader')){
+            //user doesn't have access to the file, reject call
+            header('Content-Type: text/plain');
+            echo '你沒有存取該檔案之權利';
+            return;
+        }
+        $fh = tmpfile();
+        $vfile = $this->fileModel->getVirtualFileData($virtual_file_id);
+        $this->fileModel->getVirtualFileContent($virtual_file_id, $fh);//returns the virtual file meta-data, the file content is written to $fh
+        //check if file is actually a folder, if so then reject
+        if($vfile['file_type'] == 'folder'){
+            header('Content-Type: text/plain');
+            echo '無法下載資料夾這種檔案類型';
+            return;
+        }
+        header("Content-Type: ".$vfile['mime_type']); 
+        header("Content-Disposition: attachment; filename=\"".$vfile['name']."\"");
+        //stream write the file contents
+        $chunk_size = 1*1024*1024;//1mb
+        //open the output stream
+        $stdout = fopen('php://output', 'w');
+        while(!feof($fh)){//does not work correctly
+        //$file_size = fseek($fh, 0, SEEK_END);
+        //rewind($fh);
+        //while(ftell($fh)<$file_size){
+            $data = fread($fh, $chunk_size);
+            fwrite($stdout, $data);
+        }
+        fclose($fh);
+        fclose($stdout);
+    }
 }

@@ -95,6 +95,12 @@ class FileModel extends CI_Model
 		$sfiles = $q->result_array();
 		return $sfiles;
 	}
+    public function getStorageFilesForVirtualFileIdSorted($virtual_file_id, $fieldname, $ascend){
+        $asc_or_desc = 'desc';
+        if($ascend) $asc_or_desc = 'asc';
+        $this->db->order_by($fieldname, $asc_or_desc); 
+        return $this->getStorageFilesForVirtualFileId($virtual_file_id);
+    }
 	/*
 		gets a storage file data in db, also joins the virtual file data
 	*/
@@ -207,7 +213,7 @@ class FileModel extends CI_Model
             return $permit['role'];
         }
     }
-	private function getVirtualFileData($virtual_file_id){
+	public function getVirtualFileData($virtual_file_id){
 		$q = $this->db->get_where('virtual_file', array('virtual_file_id'=>$virtual_file_id));
 		$r = $q->result_array();
 		if(sizeof($r)>0){
@@ -241,6 +247,7 @@ class FileModel extends CI_Model
 		same as above, except it takes the data of the storage file data as input,
 		this function could be used for storage files that have not been saved to the database
 		yet, it does not need the storage_file_id
+        Note that this function only adds permissions, it doesn't delete permissions that are absent.
 	*/
 	public function propagateStorageFilePermissionToCloudStorage($sfile){
 		//get the storage account
@@ -250,7 +257,8 @@ class FileModel extends CI_Model
 		//get all the users that have any form of permission to the file
 		$permits = $this->getPermissionsForVirtualFile($sfile['virtual_file_id']);
 		foreach($permits as $perm){
-			$this->cloudStorageModel->addPermissionForUser($sfile['storage_id'], $acc, $perm['account'], $perm['role']);
+			//$this->cloudStorageModel->addPermissionForUser($sfile['storage_id'], $acc, $perm['account'], $perm['role']);
+            $this->cloudStorageModel->setPermissionForUser($sfile['storage_id'], $acc, $perm['account'], $perm['role']);
 		}
 	}
 	public function inheritParentPermission($virtual_file_id){
@@ -437,7 +445,13 @@ class FileModel extends CI_Model
         $sfiles_with_account_info = $this->getStorageDataForVirtualFile($virtual_file_id);
         foreach($sfiles_with_account_info as $sfile){
             $this->propagateStorageFilePermissionToCloudStorage($sfile);
+            //delete permissions on storage
+            $owner_acc = $this->storageAccountModel->getStorageAccountWithId($sfile['storage_account_id']);
+            foreach($share_change['permission_delete'] as $user){
+                $this->cloudStorageModel->deletePermissionForUser($sfile['storage_id'], $owner_acc, $user);
+            }
         }
+        
     }
 	public function registerStorageFile($storageFileData){
 		return $this->db->insert('storage_file', $storageFileData);
@@ -624,24 +638,12 @@ class FileModel extends CI_Model
 	}
     
     public function hasAccess($user, $virtual_file_id, $role){
-        if($file_id === -1) return true;
-        /*
-        $q = $this->db->get_where('virtual_file', array('virtual_file_id'=>$file_id));
-        $r = $q->result_array();
-        if(sizeof($r)==0) return false;
-        $file = $r[0];
-        $account = $file['account_data_id'];
-        $q = $this->db->get_where('accounts', array('account_data_id'=>$account));
-        $r = $q->result_array();
-        if(sizeof($r)==0) return false;
-        $acc = $r[0];
-        return ($acc['account'] === $user);
-        */
+        if($virtual_file_id === -1) return true;
         $q = $this->db->get_where('file_permissions', array('virtual_file_id'=>$virtual_file_id, 'account'=>$user));
         $r = $q->result_array();
         if(sizeof($r)>0){
             $permit = $r[0];
-            if($this->roleCompare($role, $permit['role'])>=0) return true;
+            if($this->roleCompare($role, $permit['role'])<=0) return true;
         }
         return false;
         
@@ -836,6 +838,68 @@ class FileModel extends CI_Model
                 'link'=>$link_url
             );
         }
+    }
+    /*
+        gets the download link of a file, we will try to see if the user has access to the file first, if not we will return a error.
+        if the file is chunked up already, then we will redirect the data from the server, so we will reply with a url on our system.
+        output format:
+        array(
+            'status'=>'success' or 'error'
+            'errorMessage'=>'the error'
+            'link'=>link url on the storage provider, or on our system, files.downloadFromServer
+        );
+    */
+    public function getDownloadLink($virtual_file_id, $user){
+        if($this->hasAccess($user, $virtual_file_id, 'reader')){
+            //determine if the file can be downloaded on the provider, or should our system download it and redirect it to the user
+            //get the storage_files
+            $sfiles = $this->getStorageFilesForVirtualFileId($virtual_file_id);
+            if(sizeof($sfiles)>1){
+                //download from server
+                return array(
+                    'status'=>'success',
+                    'link'=>base_url().'index.php/files/downloadfromserver/'.$virtual_file_id
+                );
+            }else if(sizeof($sfiles)==0){
+                //error, there is no storage file data, this should never happen
+                return array(
+                    'status'=>'error',
+                    'link'=>'找不到此虛擬檔案之實體檔案資料'
+                );
+            }else{// == 1, can download from provider directly
+                $sfile = $sfiles[0];
+                $storage_id = $sfile['storage_id'];
+                $storage_account = $this->storageAccountModel->getStorageAccountWithId($sfile['storage_account_id']);
+                $link_res = $this->cloudStorageModel->getDownloadLink($storage_id, $storage_account, $user);
+                return $link_res;
+            }
+        }else{
+            return array(
+                'status'=>'error',
+                'errorMessage'=>'你沒有下載該檔案的權利!'
+            );
+        }
+    }
+    /*
+        download a virtual file's content from the cloud storage providers, different from cloudStorageModel->download, this function will download
+        virtual files that were split up and reconstruct the file data if needed.
+        in cloudStrorageModel->download, the target is a storage file, not a virtual file
+        $fh is a opened file with write mode enabled, we will start writing to the file at it's current position
+        Note that the $fh will be rewinded after this function
+        returns: nothing
+    */
+    public function getVirtualFileContent($virtual_file_id, $fh){
+        //download each storage file of this virtual file sequentially
+        //get all the storage files in offset order
+        $sfiles = $this->getStorageFilesForVirtualFileIdSorted($virtual_file_id, 'byte_offset_start', true);
+        foreach($sfiles as $sfile){
+            $storage_account = $this->storageAccountModel->getStorageAccountWithId($sfile['storage_account_id']);
+            $storage_id = $sfile['storage_id'];
+            $this->cloudStorageModel->downloadFile($storage_account, $storage_id, $fh);
+            //the $fh is rewinded in each call of downloadFile, so we need to seek end to append to it
+            fseek($fh, 0, SEEK_END);
+        }
+        rewind($fh);
     }
 	//new system--------------------------------------------------------------------------------------------
     public function deleteDirectory($file){

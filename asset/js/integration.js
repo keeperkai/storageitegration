@@ -1,6 +1,23 @@
+//download a file directly from the browser
+function downloadFile(){
+  var virtual_file_id = rightClickedNode.virtual_file_id;
+  var win = window.open('../../../waiting.html');
+  FileController.getDownloadLink(virtual_file_id, function(resp){
+    if(resp.status == 'error'){
+      alert(resp.errorMessage);
+    }else if(resp.status == 'need_account'){
+      if(confirm(resp.errorMessage + '，轉載至帳號管理頁面?')){
+        window.location.href = './manageaccount';
+      }
+    }else{//success
+      win.location.href = resp.link;
+    }
+  });
+}
 //Edit/Preview Link related
 function editOrPreview(){
   var virtual_file_id = rightClickedNode.virtual_file_id;
+  var win = window.open('../../../waiting.html');
   FileController.getEditViewLink(virtual_file_id, function(resp){
     if(resp.status == 'error'){
       alert(resp.errorMessage);
@@ -9,7 +26,7 @@ function editOrPreview(){
         window.location.href = './manageaccount';
       }
     }else{//success
-      window.open(resp.link);
+      win.location.href = resp.link;
     }
   });
 }

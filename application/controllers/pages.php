@@ -23,9 +23,8 @@ class Pages extends CI_Controller
             switch ($page) {
                 case 'manageaccount':
                     $data['title'] = '連結雲端硬碟帳號';
-					
-                    $query = $this->db->get_where('storage_account', array('account'=>$account));
-                    $result = $query->result_array();
+					$this->load->model('storageaccountmodel', 'storageAccountModel');
+                    $result = $this->storageAccountModel->getStorageAccountWithSchedulingInfo($account);
                     $data['storage_account'] = $result;
                     break;
                 case 'integration':

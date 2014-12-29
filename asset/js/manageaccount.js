@@ -10,6 +10,3 @@ function connectDropboxAccount(){
   window.location.href = '../../ciauthorization/connectdropboxaccount';
   return false;
 }
-$(document).ready(function(){
-
-});
