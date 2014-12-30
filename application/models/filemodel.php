@@ -11,7 +11,7 @@ class FileModel extends CI_Model
 		$this->load->model('googledrivemodel', 'googleDriveModel');
 		$this->load->model('cloudstoragemodel', 'cloudStorageModel');
     }
-	/*
+    /*
 		1.delete the storage file on the cloud storage
 		2.delete the storage file data in our system
 	*/
@@ -162,6 +162,19 @@ class FileModel extends CI_Model
         $r = $q->result_array();
         return $r;
     }
+    public function moveVirtualFile($virtual_file_id, $new_parent_virtual_file_id, $inherit_parent_permissions = true){
+        $this->db->update(
+            'virtual_file',
+            array('parent_virtual_file_id'=>$new_parent_virtual_file_id),
+            array('virtual_file_id'=>$virtual_file_id)
+        );
+        if($inherit_parent_permissions){
+            $this->inheritParentPermission($virtual_file_id);
+            //add permissions on cloud storage
+            $this->propagateVirtualFilePermissionToCloudStorageWithId($virtual_file_id);
+        }
+        return true;
+    }
     /*
         output format:
         array(
@@ -261,6 +274,25 @@ class FileModel extends CI_Model
             $this->cloudStorageModel->setPermissionForUser($sfile['storage_id'], $acc, $perm['account'], $perm['role']);
 		}
 	}
+    public function propagateVirtualFilePermissionToCloudStorageWithId($virtual_file_id){
+        $vfile = $this->getVirtualFileData($virtual_file_id);
+        if($vfile){
+            return $this->propagateVirtualFilePermissionToCloudStorage($vfile);
+        }
+        return false;
+    }
+    public function propagateVirtualFilePermissionToCloudStorage($vfile){
+        if($vfile['file_type'] == 'folder') return true;
+        $permits = $this->getPermissionsForVirtualFile($vfile['virtual_file_id']);
+        $sfiles = $this->getStorageFilesForVirtualFileId($vfile['virtual_file_id']);
+		foreach($permits as $perm){
+            foreach($sfiles as $sfile){
+                $acc = $this->storageAccountModel->getStorageAccountWithId($sfile['storage_account_id']);
+                $this->cloudStorageModel->setPermissionForUser($sfile['storage_id'], $acc, $perm['account'], $perm['role']);
+            }
+		}
+        return true;
+    }
 	public function inheritParentPermission($virtual_file_id){
         $vfile = $this->getVirtualFileData($virtual_file_id);
 		$parent_id = $vfile['parent_virtual_file_id'];
@@ -628,16 +660,7 @@ class FileModel extends CI_Model
 		$virtual_file_tree = array(array('id'=>1,'pId'=>0,'name'=>'MyStorage'),array('id'=>2,'pId'=>0,'name'=>'Shared With Me'));
 		DFSPullChildren($file_map, $virtual_file_tree, $parent_id_grouping, -1);
 	}
-	
-	public function constructVirtualFileMap($virtual_files){
-		$output = array();
-		foreach($virtual_files as $vfile){
-			$output[$vfile['virtual_file_id']] = $vfile;
-		}
-		return $output;
-	}
-    
-    public function hasAccess($user, $virtual_file_id, $role){
+	public function hasAccess($user, $virtual_file_id, $role){
         if($virtual_file_id === -1) return true;
         $q = $this->db->get_where('file_permissions', array('virtual_file_id'=>$virtual_file_id, 'account'=>$user));
         $r = $q->result_array();
@@ -720,11 +743,16 @@ class FileModel extends CI_Model
         }
         return $loosefiles;
     }
+    /*
+        accepts an array of indexed virtual files,
+        outputs a map using the 'virtual_file_id' as key, the set of virtual files that include all the other files in the input(
+        the output files are also in the input array, it just eliminates the ones that are descendants of other files)
+    */
     public function getIndependentFiles($file_collection){//returns independent files, i.e. if there are file ancestors->descendants, return a collection with redundant files removed
         //input should be an array of array, each lower array containing a associative key 'file_id'
         $output = $file_collection;
-        $output = $this->constructVirtualFileMap($output);
-        $set = $this->constructVirtualFileMap($file_collection);
+        $output = array_to_map('virtual_file_id', $output);
+        $set = array_to_map('virtual_file_id', $file_collection);
         foreach($file_collection as $file){
             $ancestors = $this->getAncestorFileIds($file);
             $notindie = false;
@@ -755,7 +783,7 @@ class FileModel extends CI_Model
         }
         return $output;
     }
-    public function getAncestorFileIds($file){// outputs a map with fileIds as key and true as value
+    public function getAncestorFileIds($file){// outputs a map with fileIds as key and true as value, file is a virtual file
         $output = array();
         $parent_id = $file['parent_virtual_file_id'];
         $output[$parent_id] = true;
@@ -901,6 +929,22 @@ class FileModel extends CI_Model
         }
         rewind($fh);
     }
+    public function isDescendantOfFiles($virtual_file_id, $files){
+        $set = array_to_map('virtual_file_id', $files);
+        $r = $this->getVirtualFileData($virtual_file_id);
+        if($r == false) return false;
+        $target = $r;
+        $ancestors = $this->getAncestorFileIds($target);
+        foreach($ancestors as $id => $whatever){
+            if(array_key_exists($id, $set)){
+                return true;
+            }
+        }
+        return false;
+    }
+    public function constructVirtualFileMap($vfiles){
+        return array_to_map('virtual_file_id', $vfiles);
+    }
 	//new system--------------------------------------------------------------------------------------------
     public function deleteDirectory($file){
         $children = $this->getChildrenVirtualFiles($file['file_id']);
@@ -984,28 +1028,6 @@ class FileModel extends CI_Model
         }
         */
     }
-    public function isDescendantOfFiles($file_id, $files){
-        $set = $this->getAsFileIdKeyArray($files);
-        $q = $this->db->get_where('files', array('file_id'=>$file_id));
-        $r = $q->result_array();
-        if(sizeof($r) === 0) return false;
-        $target = $r[0];
-        $ancestors = $this->getAncestorFileIds($target);
-        foreach($ancestors as $id => $whatever){
-            if(array_key_exists($id, $set)){
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    public function getAsFileIdKeyArray($file_collection){
-        $output = array();
-        foreach($file_collection as $file){
-            $output[$file['file_id']] = $file;
-        }
-        return $output;
-    }
     
     public function getFileTree($user, $root_dir_id, $recurse){
         $output = array();
@@ -1030,15 +1052,15 @@ class FileModel extends CI_Model
     }
     public function isDirectory($file_id){
         if($file_id==-1) return true;
-        $q = $this->db->get_where('files',array('file_id'=>$file_id));
+        $q = $this->db->get_where('files',array('virtual_file_id'=>$file_id));
         $r = $q->result_array();
         if(sizeof($r)>0){
-            if($r[0]['type']=='dir') return true;
+            if($r[0]['file_type']=='folder') return true;
         }
         return false;
     }
     private function constructTree($node){
-        $children = $this->getChildren($node['account'], $node['file_id']);
+        $children = $this->getChildren($node['account'], $node['virtual_file_id']);
         $node['children'] = array();
         if(sizeof($children)>0){
             foreach($children as $child){

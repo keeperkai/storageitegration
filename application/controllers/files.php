@@ -269,6 +269,78 @@ class Files extends CI_Controller
             exit(0);
         }
     }
+    /*
+        this method returns a link to the shared/not shared file on the cloud storage provider it resides on, this only works for files that are
+        not allowed to be chunked(configured files).
+        we will look at the user's permission to the file on our storage and decide what kind of link(edit or preview) the user will get
+        
+        output: array(
+            status: 'success' or 'error' or 'need_account'
+            errorMessage: a message describing why the user can't get a link to the file, such as "You don't have the permissions to access the file"
+            type: 'edit' or 'preview'
+            link: the url we return to the user agent
+        )
+    */
+    public function getEditViewLink(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $virtual_file_id = $this->input->post('virtual_file_id');
+        $result = $this->fileModel->getEditViewLink($user, $virtual_file_id);
+        header('Content-Type: application/json');
+        echo json_encode($result);
+    }
+    public function getDownloadLink(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $virtual_file_id = $this->input->post('virtual_file_id');
+        $result = $this->fileModel->getDownloadLink($virtual_file_id, $user);
+        header('Content-Type: application/json');
+        echo json_encode($result);
+    }
+    public function downloadFromServer($virtual_file_id){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        //check if user has access
+        if(!$this->fileModel->hasAccess($user, $virtual_file_id, 'reader')){
+            //user doesn't have access to the file, reject call
+            header('Content-Type: text/plain');
+            echo '你沒有存取該檔案之權利';
+            return;
+        }
+        $fh = tmpfile();
+        $vfile = $this->fileModel->getVirtualFileData($virtual_file_id);
+        $this->fileModel->getVirtualFileContent($virtual_file_id, $fh);//returns the virtual file meta-data, the file content is written to $fh
+        //check if file is actually a folder, if so then reject
+        if($vfile['file_type'] == 'folder'){
+            header('Content-Type: text/plain');
+            echo '無法下載資料夾這種檔案類型';
+            return;
+        }
+        header("Content-Type: ".$vfile['mime_type']); 
+        header("Content-Disposition: attachment; filename=\"".$vfile['name']."\"");
+        //stream write the file contents
+        $chunk_size = 1*1024*1024;//1mb
+        //open the output stream
+        $stdout = fopen('php://output', 'w');
+        while(!feof($fh)){//does not work correctly
+        //$file_size = fseek($fh, 0, SEEK_END);
+        //rewind($fh);
+        //while(ftell($fh)<$file_size){
+            $data = fread($fh, $chunk_size);
+            fwrite($stdout, $data);
+        }
+        fclose($fh);
+        fclose($stdout);
+    }
 	//new system---------------------------------------------------------
     
     //will return a file tree
@@ -342,9 +414,9 @@ class Files extends CI_Controller
             return;
         }
         $user = $this->session->userdata('ACCOUNT');
-        $files = $this->input->post('files');
-        $parent_file_id = $this->input->post('parent_file_id');
-        
+        $files = $this->input->post('virtual_files');
+        $parent_virtual_file_id = $this->input->post('parent_virtual_file_id');
+        /*
         $this->checkDirAccess($user, $parent_file_id);
         //remove non-indie files
         $files = $this->fileModel->getIndependentFiles($files);
@@ -352,9 +424,82 @@ class Files extends CI_Controller
         $this->checkTargetDirIsDescendantOfFiles($parent_file_id, $files);
         //check access for each file
         foreach($files as $file){
-            $this->checkFileAccess($user, $file['file_id']);
+            $this->checkFileAccess($user, $file['virtual_file_id']);
         }
         $this->fileModel->setParentForFileArray($files,$parent_file_id);
+        */
+        //check if the user has at least writer access to the target directory, and if it is in fact a folder
+        $parent_vfile = $this->fileModel->getVirtualFileData($parent_virtual_file_id);
+        
+        if(!$this->fileModel->hasAccess($user, $parent_virtual_file_id, 'writer')){
+            header('Content-Type: application/json');
+            echo json_encode(
+                array(
+                    'status'=>'error',
+                    'errorMessage'=>'你沒有存取移動位置目標的權限，您至少要有編輯的權利才能移動至該資料夾'
+                )
+            );
+            return;
+        }
+        if($parent_vfile != false){
+            if($parent_vfile['file_type']!='folder'){
+                header('Content-Type: application/json');
+                echo json_encode(
+                    array(
+                        'status'=>'error',
+                        'errorMessage'=>'你所移動的目標位置並不是資料夾'
+                    )
+                );
+                return;
+            }
+        }else{//no virtual file, depending on if parent_virtual_file_id = -1 we reply
+            if($parent_virtual_file_id != -1){
+                header('Content-Type: application/json');
+                echo json_encode(
+                    array(
+                        'status'=>'error',
+                        'errorMessage'=>'你所移動的目標位置不存在'
+                    )
+                );
+                return;
+            }
+        }
+        //all illegal target folders excluded, now do checking on the source files and get independent files
+        $files = $this->fileModel->getIndependentFiles($files);
+        //check if the user has access to each file
+        foreach($files as $vfile){
+            if(!$this->fileModel->hasAccess($user, $vfile['virtual_file_id'], 'writer')){
+                header('Content-Type: application/json');
+                echo json_encode(
+                    array(
+                        'status'=>'error',
+                        'errorMessage'=>'您沒有足夠的權限去移動這些檔案，請確認您至少有編輯權限'
+                    )
+                );
+                return;
+            }
+        }
+        //check if the target folder is an descendant of one of the source files
+        if($this->fileModel->isDescendantOfFiles($parent_virtual_file_id, $files)){
+            header('Content-Type: application/json');
+            echo json_encode(
+                array(
+                    'status'=>'error',
+                    'errorMessage'=>'不可將上層資料夾移動到下層資料夾中'
+                )
+            );
+            return;
+        }
+        //all systems go!
+        foreach($files as $vfile){
+            $this->fileModel->moveVirtualFile($vfile['virtual_file_id'], $parent_virtual_file_id);
+        }
+        header('Content-Type: application/json');
+        echo json_encode(
+            array(
+                'status'=>'success'
+            )
+        );
     }
     private function checkTargetDirIsDescendantOfFiles($parent_id, $files){
         if($this->fileModel->isDescendantOfFiles($parent_id, $files)){
@@ -378,76 +523,5 @@ class Files extends CI_Controller
             exit(0);
         }
     }
-    /*
-        this method returns a link to the shared/not shared file on the cloud storage provider it resides on, this only works for files that are
-        not allowed to be chunked(configured files).
-        we will look at the user's permission to the file on our storage and decide what kind of link(edit or preview) the user will get
-        
-        output: array(
-            status: 'success' or 'error' or 'need_account'
-            errorMessage: a message describing why the user can't get a link to the file, such as "You don't have the permissions to access the file"
-            type: 'edit' or 'preview'
-            link: the url we return to the user agent
-        )
-    */
-    public function getEditViewLink(){
-        if (!$this->session->userdata('ACCOUNT')) {
-            header('Location: '.base_url().'index.php/pages/view/login');
-            return;
-        }
-        $user = $this->session->userdata('ACCOUNT');
-        $virtual_file_id = $this->input->post('virtual_file_id');
-        $result = $this->fileModel->getEditViewLink($user, $virtual_file_id);
-        header('Content-Type: application/json');
-        echo json_encode($result);
-    }
-    public function getDownloadLink(){
-        if (!$this->session->userdata('ACCOUNT')) {
-            header('Location: '.base_url().'index.php/pages/view/login');
-            return;
-        }
-        $user = $this->session->userdata('ACCOUNT');
-        $virtual_file_id = $this->input->post('virtual_file_id');
-        $result = $this->fileModel->getDownloadLink($virtual_file_id, $user);
-        header('Content-Type: application/json');
-        echo json_encode($result);
-    }
-    public function downloadFromServer($virtual_file_id){
-        if (!$this->session->userdata('ACCOUNT')) {
-            header('Location: '.base_url().'index.php/pages/view/login');
-            return;
-        }
-        $user = $this->session->userdata('ACCOUNT');
-        //check if user has access
-        if(!$this->fileModel->hasAccess($user, $virtual_file_id, 'reader')){
-            //user doesn't have access to the file, reject call
-            header('Content-Type: text/plain');
-            echo '你沒有存取該檔案之權利';
-            return;
-        }
-        $fh = tmpfile();
-        $vfile = $this->fileModel->getVirtualFileData($virtual_file_id);
-        $this->fileModel->getVirtualFileContent($virtual_file_id, $fh);//returns the virtual file meta-data, the file content is written to $fh
-        //check if file is actually a folder, if so then reject
-        if($vfile['file_type'] == 'folder'){
-            header('Content-Type: text/plain');
-            echo '無法下載資料夾這種檔案類型';
-            return;
-        }
-        header("Content-Type: ".$vfile['mime_type']); 
-        header("Content-Disposition: attachment; filename=\"".$vfile['name']."\"");
-        //stream write the file contents
-        $chunk_size = 1*1024*1024;//1mb
-        //open the output stream
-        $stdout = fopen('php://output', 'w');
-        while(!feof($fh)){//does not work correctly
-        //$file_size = fseek($fh, 0, SEEK_END);
-        //rewind($fh);
-        //while(ftell($fh)<$file_size){
-            $data = fread($fh, $chunk_size);
-            fwrite($stdout, $data);
-        }
-        fclose($fh);
-        fclose($stdout);
-    }
+    
 }

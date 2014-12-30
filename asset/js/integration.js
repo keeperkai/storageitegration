@@ -408,28 +408,10 @@ function addPermissionForThisUser(virtual_file_id,role){
   });
 	return output;
 }
-function moveFileInFileSystem(files, parent_id){
-  var output = false;
-  $.ajax({
-    url: '../../files/movefileinsystem',
-    type: 'POST',
-    data: {
-      'files': files,
-      'parent_virtual_file_id': parent_id,
-    },
-    async: false,
-    success: function(data, textstatus, request) {
-      renderFileSystem();
-      output = true;
-    },
-    error: function(xhr, status, error) {
-      var err = xhr.responseText;
-      console.log(err);
-      alert(err);
-      alert(error);
-    }
+function moveFileInFileSystem(files, parent_virtual_file_id){
+  FileController.moveFileInSystem(files, parent_virtual_file_id, function(){
+    renderFileSystem();
   });
-  return true;
 }
 
 function getCurrentRightClickedParentId(){
@@ -755,23 +737,23 @@ function getFileTree(){
   return output;
 }
 function beforeDrag(treeId, treeNodes) {
-			for (var i=0,l=treeNodes.length; i<l; i++) {
-				if (treeNodes[i].drag === false) {
-					return false;
-				}
-      }
-			return true;
-		}
-		function beforeDrop(treeId, treeNodes, targetNode, moveType) {
-			//return targetNode ? targetNode.drop !== false : true;
-      if(targetNode){
-        //if(targetNode.type != 'dir') return false;
-        moveFileInFileSystem(treeNodes, targetNode.file_id);
-      }else{//no target node
-        moveFileInFileSystem(treeNodes, -1);
-      }
+  for (var i=0,l=treeNodes.length; i<l; i++) {
+    if (treeNodes[i].drag === false) {
       return false;
-		}
+    }
+  }
+  return true;
+}
+function beforeDrop(treeId, treeNodes, targetNode, moveType) {
+  //return targetNode ? targetNode.drop !== false : true;
+  if(targetNode){
+    //if(targetNode.type != 'dir') return false;
+    moveFileInFileSystem(treeNodes, targetNode.virtual_file_id);
+  }else{//no target node
+    moveFileInFileSystem(treeNodes, -1);
+  }
+  return false;
+}
 function getPrevOpenedDirIds(prevnodes){
   var output = {};
   for(var i=0;i<prevnodes.length;++i){
