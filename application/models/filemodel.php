@@ -522,7 +522,7 @@ class FileModel extends CI_Model
         adding data to file_permissions table, setting the permissions on cloud storage(if needed, like storage files on googledrive)
         returns the virtual_file_id
     */
-    public function registerFileToSystem($user, $file_type, $mime_type, $name, $extension, $parent_virtual_file_id, $storage_file_data){
+    public function registerFileToSystem($user, $file_type, $mime_type, $name, $extension, $parent_virtual_file_id, $storage_file_data, $force_no_chunk = false){
         $fileData = array();
 		$fileData['account'] = $user;
 		$fileData['file_type'] = $file_type;
@@ -532,7 +532,8 @@ class FileModel extends CI_Model
 		$fileData['parent_virtual_file_id'] = $parent_virtual_file_id;
 		
         $allow_chunk = false;
-        if(sizeof($storage_file_data)>1)    $allow_chunk = true;//if the file is already chunked, it doesn't matter what extension it is
+        if($force_no_chunk) $allow_chunk = false;
+        else if(sizeof($storage_file_data)>1)    $allow_chunk = true;//if the file is already chunked, it doesn't matter what extension it is
         else if($fileData['file_type']=='folder') $allow_chunk = false;
         else{
             $allow_chunk = $this->settingModel->chunkAllowedForExtension($user, $fileData['extension']);
@@ -555,10 +556,10 @@ class FileModel extends CI_Model
 		$resp = true;
 		$virtual_file_id = false;
 		if($this->registerFile($fileData)){
-			$insertedfile = $this->findLatestVirtualFileWithProperties($fileData);
-			$virtual_file_id = $insertedfile['virtual_file_id'];
-			//$storage_file_data['virtual_file_id'] = $virtual_file_id;
-		
+            //$insertedfile = $this->findLatestVirtualFileWithProperties($fileData){
+			//$virtual_file_id = $insertedfile['virtual_file_id'];
+            $virtual_file_id = $this->db->insert_id();
+			
 			//add permission for the owner
 			$this->addPermission($virtual_file_id, $user, 'owner');
 			//inherit permissions from parent
@@ -661,7 +662,7 @@ class FileModel extends CI_Model
 		DFSPullChildren($file_map, $virtual_file_tree, $parent_id_grouping, -1);
 	}
 	public function hasAccess($user, $virtual_file_id, $role){
-        if($virtual_file_id === -1) return true;
+        if($virtual_file_id == -1) return true;
         $q = $this->db->get_where('file_permissions', array('virtual_file_id'=>$virtual_file_id, 'account'=>$user));
         $r = $q->result_array();
         if(sizeof($r)>0){
@@ -879,6 +880,9 @@ class FileModel extends CI_Model
     */
     public function getDownloadLink($virtual_file_id, $user){
         if($this->hasAccess($user, $virtual_file_id, 'reader')){
+            
+            
+        
             //determine if the file can be downloaded on the provider, or should our system download it and redirect it to the user
             //get the storage_files
             $sfiles = $this->getStorageFilesForVirtualFileId($virtual_file_id);
@@ -898,7 +902,14 @@ class FileModel extends CI_Model
                 $sfile = $sfiles[0];
                 $storage_id = $sfile['storage_id'];
                 $storage_account = $this->storageAccountModel->getStorageAccountWithId($sfile['storage_account_id']);
-                $link_res = $this->cloudStorageModel->getDownloadLink($storage_id, $storage_account, $user);
+                //test if the virtual file is a google document, if so, we need to get the download link from the export links:
+                $vfile = $this->getVirtualFileData($virtual_file_id);
+                $link_res = '';
+                if($vfile['file_type'] == 'google_doc'){
+                    $link_res = $this->googleDriveModel->getExportLink(str_replace("google_", "", $vfile['extension']), $storage_id, $storage_account, $user);
+                }else{
+                    $link_res = $this->cloudStorageModel->getDownloadLink($storage_id, $storage_account, $user);
+                }
                 return $link_res;
             }
         }else{
@@ -1094,5 +1105,61 @@ class FileModel extends CI_Model
         $acc = $r[0];
         return (($file['type'] === 'dir')&&($acc['account'] === $user));
     }
-    
+    /*
+        output format(file info to be used to show the user details about this virtual file):
+        {
+            name:,
+            mime_type:,
+            ...virtual file properties
+            total_file_size: the sum of the storage files
+            ,
+            storage_files:
+            [
+              {
+                storage file properties...including storage_account_id
+              },
+              {
+                ...
+              }
+            ],
+            storage_account_map:
+              {
+                size: number of storage accounts,
+                storage_accounts:
+                {
+                  'storage_account_id1': {
+                    owner:account_name
+                    provider: googledrive, dropbox, onedrive ...etc
+                  },
+                  'storage_account_id2': ...
+                }
+              }
+        }
+    */
+    public function getVirtualFileInfo($virtual_file_id){
+        $vfile = $this->getVirtualFileData($virtual_file_id);
+        $output = $vfile;//copy virtual file properties
+        if(!$vfile){
+            return false;
+        }
+        $total_file_size = 0;
+        $sfiles = $this->getStorageFilesForVirtualFileId($virtual_file_id);
+        $storage_accounts = array();
+        foreach($sfiles as $sfile){
+            $total_file_size +=$sfile['storage_file_size'];
+            $storage_account_id = $sfile['storage_account_id'];
+            if(!array_key_exists($storage_account_id, $storage_accounts)){
+                //add the storage account information to the map
+                $storage_accounts[$storage_account_id]=$this->storageAccountModel->getStorageAccountBasicInfoWithId($storage_account_id);
+            }
+        }
+        $storage_account_map = array(
+            'size'=>sizeof($storage_accounts),
+            'storage_accounts'=>$storage_accounts
+        );
+        $output['total_file_size'] = $total_file_size;
+        $output['storage_files'] = $sfiles;
+        $output['storage_account_map'] = $storage_account_map;
+        return $output;
+    }
 }

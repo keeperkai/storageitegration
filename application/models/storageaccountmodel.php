@@ -206,6 +206,18 @@ class StorageAccountModel extends CI_Model
         $storageaccounts = $query->result_array();
         return $storageaccounts;
     }
+    public function getStorageAccountsOfProviderAndQuotaLE($user, $provider, $quota){
+        $accounts = $this->getStorageAccountsOfProvider($user, $provider);
+        $accounts = $this->getSchedulingInfoForMultipleStorageAccounts($accounts);
+        //filter with quota
+        $output =  array();
+        foreach($accounts as $acc){
+            if($acc['quota_info']['free']>=$quota){
+                $output[]=$acc;
+            }
+        }
+        return $output;
+    }
     public function getStorageAccounts($user){
 		$query = $this->db->get_where('storage_account', array('account'=>$user));
         $storageaccounts = $query->result_array();
@@ -264,5 +276,24 @@ class StorageAccountModel extends CI_Model
         $provider_info = $this->config->item('provider_info');
         $provider = $storage_account_data['token_type'];
         return $provider_info[$provider]['permission_model'];
+    }
+    /*
+        extract the basic info for an storage account
+        output format:
+        {
+            owner:account name on our system
+            provider: googledrive, dropbox, onedrive ...etc
+        }
+    */
+    public function extractStorageAccountBasicInfo($storage_account_data){
+        return array(
+            'owner'=>$storage_account_data['account'],
+            'provider'=>$storage_account_data['token_type'],
+            'storage_account_name'=>$storage_account_data['storage_account_name']
+        );
+    }
+    public function getStorageAccountBasicInfoWithId($storage_account_id){
+        $storage_account = $this->getStorageAccountWithId($storage_account_id);
+        return $this->extractStorageAccountBasicInfo($storage_account);
     }
 }

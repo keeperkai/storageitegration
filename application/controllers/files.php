@@ -8,6 +8,8 @@ class Files extends CI_Controller
         $this->load->model('storageaccountmodel', 'storageAccountModel');
 		$this->load->model('settingmodel', 'settingModel');
         $this->load->model('cloudstoragemodel', 'cloudStorageModel');
+        $this->load->model('googledrivemodel', 'googleDriveModel');
+        $this->load->model('onedrivemodel', 'oneDriveModel');
         
     }
 	//test section------------------------------------------------------------------------------
@@ -341,6 +343,176 @@ class Files extends CI_Controller
         fclose($fh);
         fclose($stdout);
     }
+    /*
+        output:
+        array(
+            status:'error','success','need_account'
+            errorMessage: ...
+        )
+    */
+    public function createGoogleDoc(){
+         if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $doc_type = $this->input->post('doc_type');
+        $name = $this->input->post('name');
+        $parent_virtual_file_id= $this->input->post('parent_virtual_file_id');
+        $storage_id = '';
+        $picked_account = '';
+        //get an account that can fit the file, if no account exists, output error
+        if($doc_type == 'document'){
+            $filesize = filesize($this->config->item('document_file_path'));
+            $accounts = $this->storageAccountModel->getStorageAccountsOfProviderAndQuotaLE($user, 'googledrive', $filesize);
+            if(sizeof($accounts)>0){
+                $picked_account = $accounts[0];
+                $storage_id = $this->googleDriveModel->createDocument($picked_account, $name);
+            }else{
+                header('Content-Type: application/json');
+                echo json_encode(array(
+                    'status'=>'need_account',
+                    'errorMessage'=>'您需要一個新的google drive帳號來容納此文件'
+                ));
+                return;
+            }
+        }else if($doc_type == 'spreadsheet'){
+            $filesize = filesize($this->config->item('spreadsheet_file_path'));
+            $accounts = $this->storageAccountModel->getStorageAccountsOfProviderAndQuotaLE($user, 'googledrive', $filesize);
+            if(sizeof($accounts)>0){
+                $picked_account = $accounts[0];
+                $storage_id = $this->googleDriveModel->createSpreadSheet($picked_account, $name);
+            }else{
+                header('Content-Type: application/json');
+                echo json_encode(array(
+                    'status'=>'need_account',
+                    'errorMessage'=>'您需要一個新的google drive帳號來容納此文件'
+                ));
+                return;
+            }
+        }else if($doc_type == 'presentation'){
+            $filesize = filesize($this->config->item('spreadsheet_file_path'));
+            $accounts = $this->storageAccountModel->getStorageAccountsOfProviderAndQuotaLE($user, 'googledrive', $filesize);
+            if(sizeof($accounts)>0){
+                $picked_account = $accounts[0];
+                $storage_id = $this->googleDriveModel->createPresentation($picked_account, $name);
+            }else{
+                header('Content-Type: application/json');
+                echo json_encode(array(
+                    'status'=>'need_account',
+                    'errorMessage'=>'您需要一個新的google drive帳號來容納此文件'
+                ));
+                return;
+            }
+        }
+        //register the file to our system
+        //note that google documents take 0 bytes of space(according to google), so the storage_file_size is 0 no matter the original file size.
+        $storage_file_data = array(
+            array(
+                'storage_account_id'=>$picked_account['storage_account_id'],
+                'storage_file_type'=>'file',
+                'byte_offset_start'=>0,
+                'byte_offset_end'=>0,
+                'storage_file_size'=>0,
+                'storage_id'=>$storage_id
+            )
+        );
+        $mime_type = $this->config->item($doc_type.'_file_mime');
+        $this->fileModel->registerFileToSystem($user, 'google_doc', $mime_type, $name, 'google_'.$doc_type, $parent_virtual_file_id, $storage_file_data, true);
+        //respond to browser
+        header('Content-Type: application/json');
+        echo json_encode(array(
+            'status'=>'success',
+        ));
+    }
+    /*
+        different from google docs, the onedrive doc is just .xlsx .docx .pptx files uploaded, no special treatment needed for downloading or
+        the virtual file type...etc.
+    */
+    public function createOnedriveDoc(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $doc_type = $this->input->post('doc_type');
+        $name = $this->input->post('name');
+        
+        $parent_virtual_file_id= $this->input->post('parent_virtual_file_id');
+        $storage_id = '';
+        $picked_account = '';
+        $filesize = 0;
+        $ext = '';
+        $complete_file_name = '';
+        //get an account that can fit the file, if no account exists, output error
+        if($doc_type == 'document'){
+            $filesize = filesize($this->config->item('document_file_path'));
+            $ext = 'docx';
+            $complete_file_name = $name.'.'.$ext;
+            $accounts = $this->storageAccountModel->getStorageAccountsOfProviderAndQuotaLE($user, 'onedrive', $filesize);
+            if(sizeof($accounts)>0){
+                $picked_account = $accounts[0];
+                $storage_id = $this->oneDriveModel->createDocument($picked_account, $complete_file_name);
+            }else{
+                header('Content-Type: application/json');
+                echo json_encode(array(
+                    'status'=>'need_account',
+                    'errorMessage'=>'您需要一個新的onedrive帳號來容納此文件'
+                ));
+                return;
+            }
+        }else if($doc_type == 'spreadsheet'){
+            $filesize = filesize($this->config->item('spreadsheet_file_path'));
+            $ext = 'xlsx';
+            $complete_file_name = $name.'.'.$ext;
+            $accounts = $this->storageAccountModel->getStorageAccountsOfProviderAndQuotaLE($user, 'onedrive', $filesize);
+            if(sizeof($accounts)>0){
+                $picked_account = $accounts[0];
+                $storage_id = $this->oneDriveModel->createSpreadSheet($picked_account, $complete_file_name);
+            }else{
+                header('Content-Type: application/json');
+                echo json_encode(array(
+                    'status'=>'need_account',
+                    'errorMessage'=>'您需要一個新的onedrive帳號來容納此文件'
+                ));
+                return;
+            }
+        }else if($doc_type == 'presentation'){
+            $filesize = filesize($this->config->item('spreadsheet_file_path'));
+            $ext = 'pptx';
+            $complete_file_name = $name.'.'.$ext;
+            $accounts = $this->storageAccountModel->getStorageAccountsOfProviderAndQuotaLE($user, 'onedrive', $filesize);
+            if(sizeof($accounts)>0){
+                $picked_account = $accounts[0];
+                $storage_id = $this->oneDriveModel->createPresentation($picked_account, $complete_file_name);
+            }else{
+                header('Content-Type: application/json');
+                echo json_encode(array(
+                    'status'=>'need_account',
+                    'errorMessage'=>'您需要一個新的onedrive帳號來容納此文件'
+                ));
+                return;
+            }
+        }
+        //register the file to our system
+        $storage_file_data = array(
+            array(
+                'storage_account_id'=>$picked_account['storage_account_id'],
+                'storage_file_type'=>'file',
+                'byte_offset_start'=>0,
+                'byte_offset_end'=>$filesize-1,
+                'storage_file_size'=>$filesize,
+                'storage_id'=>$storage_id
+            )
+        );
+        $mime_type = $this->config->item($doc_type.'_file_mime');
+        $this->fileModel->registerFileToSystem($user, 'file', $mime_type, $complete_file_name, $ext, $parent_virtual_file_id, $storage_file_data, true);
+        //respond to browser
+        header('Content-Type: application/json');
+        echo json_encode(array(
+            'status'=>'success',
+        ));
+    }
 	//new system---------------------------------------------------------
     
     //will return a file tree
@@ -377,37 +549,60 @@ class Files extends CI_Controller
         header('Content-Type: application/json');
         echo json_encode($filetree);
     }
-	/*
-    public function registerFileToSystem(){
+    /*
+    gets the file info of virtual_file_id from server
+    server response format:
+        {
+            'status':'error' or 'success',
+            'errorMessage':the error,
+            'file_info': the file info structure written for createInfoDialog in integration.js
+        }
+    */
+	public function getVirtualFileInfo(){
         if (!$this->session->userdata('ACCOUNT')) {
             header('Location: '.base_url().'index.php/pages/view/login');
             return;
         }
         $user = $this->session->userdata('ACCOUNT');
-		$fileData = array();
-		$fileData['account'] = $user;
-		$fileData['file_type'] = $this->input->post('file_type');
-		$fileData['name'] = $this->input->post('name');
-		$fileData['extension'] = $this->input->post('extension');
-		$fileData['parent_virtual_file_id'] = $this->input->post('parent_virtual_file_id');
-		
-        $fileData = array();
-        $fileData['storage_id'] = $this->input->post('storage_id');
-        $fileData['type'] = $this->input->post('type');
-        $fileData['account_data_id'] = $this->input->post('account_data_id');
-        $fileData['name'] = $this->input->post('name');
-        $fileData['ext'] = $this->input->post('ext');
-        $fileData['mime'] = $this->input->post('mime');
-        $fileData['access'] = $this->input->post('access');
-        $fileData['parent_file_id'] = $this->input->post('parent_file_id');
-        //check if the user owns the parent_file_id and the storage account
-        $this->checkDirAccess($user, $fileData['parent_file_id']);
-        $this->checkStorageAccountAccess($user, $fileData['account_data_id']);
-        
-        $this->fileModel->registerFile($fileData);
-		
+        $virtual_file_id = $this->input->post('virtual_file_id');
+        //check if the file exists
+        $vfile = $this->fileModel->getVirtualFileData($virtual_file_id);
+        if(!$vfile){
+            header('Content-Type: application/json');
+            echo json_encode(array(
+                'status'=>'error',
+                'errorMessage'=>'該檔案不存在!'
+            ));
+            return;
+        }
+        //check if the file_type is correct
+        if($vfile['file_type'] == 'folder'){
+            header('Content-Type: application/json');
+            echo json_encode(array(
+                'status'=>'error',
+                'errorMessage'=>'無法查看資料夾之詳細資訊!'
+            ));
+            return;
+        }
+        //check if user has access to the file
+        if(!$this->fileModel->hasAccess($user, $virtual_file_id, 'reader')){
+            header('Content-Type: application/json');
+            echo json_encode(array(
+                'status'=>'error',
+                'errorMessage'=>'您沒有足夠的權限查看該檔案之詳細資訊!'
+            ));
+            return;
+        }
+        //get the info
+        $file_info = $this->fileModel->getVirtualFileInfo($virtual_file_id);
+        header('Content-Type: application/json');
+        echo json_encode(
+            array(
+                'status'=>'success',
+                'file_info'=>$file_info
+            )
+        );
     }
-	*/
     public function moveFileInSystem(){
         if (!$this->session->userdata('ACCOUNT')) {
             header('Location: '.base_url().'index.php/pages/view/login');
@@ -430,7 +625,6 @@ class Files extends CI_Controller
         */
         //check if the user has at least writer access to the target directory, and if it is in fact a folder
         $parent_vfile = $this->fileModel->getVirtualFileData($parent_virtual_file_id);
-        
         if(!$this->fileModel->hasAccess($user, $parent_virtual_file_id, 'writer')){
             header('Content-Type: application/json');
             echo json_encode(

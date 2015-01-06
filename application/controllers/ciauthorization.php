@@ -8,15 +8,43 @@ class CIAuthorization extends CI_Controller
         $this->load->model('storageaccountmodel','storageAccountModel');
         $this->load->model('cloudstoragemodel','storageAccountModel');
     }
+    public function connectOneDriveAccount(){
+        $storage_account_name = $this->input->get('storage_account_name');
+        $client_id = '0000000048127A68';
+        $client_secret = 'MTuhJU2dIGjqndPvzc8PZwKztnuLQ6d6';
+        $url = 'https://login.live.com/oauth20_authorize.srf?client_id=0000000048127A68&scope=wl.skydrive_update%20wl.basic%20wl.offline_access%20wl.contacts_skydrive&response_type=code&redirect_uri='.urlencode('https://storageintegration.twbbs.org/index.php/ciauthorization/onedrivecode').'&state='.urlencode($storage_account_name);
+        header('Location: '.$url);
+    }
+    public function connectGoogleAccount(){
+        require_once 'Google/Client.php';
+        $storage_account_name = $this->input->get('storage_account_name');
+        $client_id = '214603671512-82lgo7euepvskvpkfret9bsov1aqghvq.apps.googleusercontent.com';
+        $client_secret = 'tXYw9OS8gOEOyOxLWn2sFiR0';
+        $redirect_uri = base_url().'index.php/ciauthorization/code';
+        
+        $client = new Google_Client();
+        $client->setClientId($client_id);
+        $client->setClientSecret($client_secret);
+        $client->setRedirectUri($redirect_uri);
+        $client->addScope("https://www.googleapis.com/auth/drive");
+        $client->addScope("email");
+        $client->setAccessType('offline');
+        $client->setApprovalPrompt('force');
+        $client->setState($storage_account_name);
+        $authUrl = $client->createAuthUrl();
+        header('Location: '.$authUrl);
+    }
     public function connectDropboxAccount(){
+        $storage_account_name = $this->input->get('storage_account_name');
         $app_key = '8k1f7dm3vg2tsh2';
         $app_secret = '8kvblrvqm32hyfu';
         $redirect_uri = base_url().'index.php/ciauthorization/dropboxcode';
         
-        header('Location: '.'https://www.dropbox.com/1/oauth2/authorize?response_type=code&client_id='.$app_key.'&redirect_uri='.$redirect_uri.'&force_reapprove=true');
+        header('Location: '.'https://www.dropbox.com/1/oauth2/authorize?response_type=code&client_id='.$app_key.'&redirect_uri='.$redirect_uri.'&force_reapprove=true&'.'state='.urlencode($storage_account_name));
     }
     //note: dropbox access_token's are permanent yay!
     public function dropboxCode(){
+        $storage_account_name = $this->input->get('state');
         $app_key = '8k1f7dm3vg2tsh2';
         $app_secret = '8kvblrvqm32hyfu';
         $redirect_uri = base_url().'index.php/ciauthorization/dropboxcode';
@@ -44,41 +72,18 @@ class CIAuthorization extends CI_Controller
         $curr_timestamp = new DateTime();
         $dbdata = array(
             'account'=>$this->session->userdata('ACCOUNT'),
+            'storage_account_name'=>$storage_account_name,
             'id_on_storage'=>$result['uid'],
             'token_type'=>'dropbox',
             'token'=>$result['access_token'],
-			'time_stamp'=>$curr_timestamp->format('Y-m-d H:i:s')
+            'time_stamp'=>$curr_timestamp->format('Y-m-d H:i:s')
 		);
 		
 		$this->db->insert('storage_account', $dbdata);
         header("Location: ".base_url()."index.php/pages/view/manageaccount");
     }
-    public function connectSkydriveAccount(){
-        //not needed, we redirectly directly in the webpage
-        $client_id = '0000000048127A68';
-        $client_secret = 'MTuhJU2dIGjqndPvzc8PZwKztnuLQ6d6';
-    }
-    public function connectGoogleAccount(){
-        require_once 'Google/Client.php';
-        $client_id = '214603671512-82lgo7euepvskvpkfret9bsov1aqghvq.apps.googleusercontent.com';
-        $client_secret = 'tXYw9OS8gOEOyOxLWn2sFiR0';
-        //$client_id = '214603671512-7a11eenevrthg7uc7tkq9jg66eoijiu6.apps.googleusercontent.com';
-        //$client_secret = '3c5TrhJCINdvftrROW-yrR-V';
-        //$redirect_uri = 'urn:ietf:wg:oauth:2.0:oob';
-        $redirect_uri = base_url().'index.php/ciauthorization/code';
-        
-        $client = new Google_Client();
-        $client->setClientId($client_id);
-        $client->setClientSecret($client_secret);
-        $client->setRedirectUri($redirect_uri);
-        $client->addScope("https://www.googleapis.com/auth/drive");
-        $client->addScope("email");
-        $client->setAccessType('offline');
-        $client->setApprovalPrompt('force');
-        $authUrl = $client->createAuthUrl();
-        header('Location: '.$authUrl);
-    }
-	public function oneDriveCode(){
+    public function oneDriveCode(){
+        $storage_account_name = $this->input->get('state');
 		//header('Content-Type: text/plain');
 		$onedrive_client_id = '0000000048127A68';
 		$onedrive_client_secret = 'MTuhJU2dIGjqndPvzc8PZwKztnuLQ6d6';
@@ -150,6 +155,7 @@ class CIAuthorization extends CI_Controller
 		$curr_timestamp = new DateTime();
 		$dbdata = array(
             'account'=>$this->session->userdata('ACCOUNT'),
+            'storage_account_name'=>$storage_account_name,
             'id_on_storage'=>$id_on_storage,
             'token_type'=>'onedrive',
             'token'=>$refresh_token,
@@ -162,6 +168,7 @@ class CIAuthorization extends CI_Controller
 	}
     public function code(){//code for google drive accounts
         $code = $this->input->get('code');
+        $storage_account_name = $this->input->get('state');
         header("Content-type: text/plain");
         require_once 'Google/Client.php';
 		require_once 'Google/Service/Drive.php';
@@ -196,6 +203,7 @@ class CIAuthorization extends CI_Controller
 		$curr_timestamp = new DateTime();
         $dbdata = array(
             'account'=>$this->session->userdata('ACCOUNT'),
+            'storage_account_name'=>$storage_account_name,
             'id_on_storage'=>$id_on_storage,
             'token_type'=>'googledrive',
             'token'=>$accesstoken['refresh_token'],

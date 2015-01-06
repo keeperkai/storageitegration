@@ -335,7 +335,7 @@ class GoogleDriveModel extends CI_Model
         $client->setDefer(false);
         return $result['id'];
     }
-    public function uploadFile($storage_account, $file_name, $file_mime, $file_size, $file){
+    public function uploadFile($storage_account, $file_name, $file_mime, $file_size, $file, $convert = false){
         $client = $this->setupGoogleClient($storage_account);
         $service = $this->setupDriveService($client);
         
@@ -346,7 +346,12 @@ class GoogleDriveModel extends CI_Model
 
         // Call the API with the media upload, defer so it doesn't immediately return.
         $client->setDefer(true);
-        $request = $service->files->insert($google_api_file);
+        $request = '';
+        if($convert){
+            $request = $service->files->insert($google_api_file, array('convert'=>true));
+        }else{
+            $request = $service->files->insert($google_api_file);
+        }
 
         // Create a media file upload to represent our upload process.
         $media = new Google_Http_MediaFileUpload(
@@ -537,5 +542,62 @@ class GoogleDriveModel extends CI_Model
             'status'=>'success',
             'link'=>$dl_link
         );
+    }
+    //------------------google doc related functions
+    /*
+        $doc_type = document, spreadsheet, presentation
+    */
+    public function getExportLink($doc_type, $storage_id, $owner_account, $user){
+        $gdrive_accounts = $this->storageAccountModel->getStorageAccountsOfProvider($user, 'googledrive');
+        if(sizeof($gdrive_accounts)==0){
+            return array(
+                'status'=>'need_account',
+                'errorMessage'=>'您需要至少一個google drive帳號才能下載此檔案，請連結一個google drive帳號至本系統'
+            );
+        }
+        //user has at least 1 gdrive account, use this user's account to get the export link of the file, and use the access_token to download it.
+        $storage_account = $gdrive_accounts[0];
+        $client = $this->setupGoogleClient($storage_account);
+        $drive = $this->setupDriveService($client);
+        $google_api_file = $drive->files->get($storage_id);
+        if($doc_type == 'document'){
+            $dl_link = $google_api_file->getExportLinks()['application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+        }else if($doc_type == 'spreadsheet'){
+            $dl_link = $google_api_file->getExportLinks()['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+        }else if($doc_type == 'presentation'){
+            $dl_link = $google_api_file->getExportLinks()['application/vnd.openxmlformats-officedocument.presentationml.presentation'];
+        }
+        $dl_link .= '&access_token='.$this->getAccessTokenForClient($storage_account);
+        return array(
+            'status'=>'success',
+            'link'=>$dl_link
+        );
+    }
+    public function createDocument($storage_account, $name){
+        $doc_path = $this->config->item('document_file_path');
+        $file = fopen($doc_path, 'r');
+        $file_size = filesize($doc_path);
+        $file_mime = $this->config->item('document_file_mime');
+        $id = $this->uploadFile($storage_account, $name, $file_mime, $file_size, $file, true);
+        fclose($file);
+        return $id;
+    }
+    public function createSpreadSheet($storage_account, $name){
+        $doc_path = $this->config->item('spreadsheet_file_path');
+        $file = fopen($doc_path, 'r');
+        $file_size = filesize($doc_path);
+        $file_mime = $this->config->item('spreadsheet_file_mime');
+        $id = $this->uploadFile($storage_account, $name, $file_mime, $file_size, $file, true);
+        fclose($file);
+        return $id;
+    }
+    public function createPresentation($storage_account, $name){
+        $doc_path = $this->config->item('presentation_file_path');
+        $file = fopen($doc_path, 'r');
+        $file_size = filesize($doc_path);
+        $file_mime = $this->config->item('presentation_file_mime');
+        $id = $this->uploadFile($storage_account, $name, $file_mime, $file_size, $file, true);
+        fclose($file);
+        return $id;
     }
 }

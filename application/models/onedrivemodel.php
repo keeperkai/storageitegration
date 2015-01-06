@@ -415,5 +415,32 @@ class OneDriveModel extends CI_Model
             'link'=>$result['location'].'&download=true'//perhaps we won't add download=true for the preview version... it looks better than the embed link we use now
         );
     }
-
+    //create document related
+    public function createDocument($storage_account, $name){
+        $doc_path = $this->config->item('document_file_path');
+        $file = fopen($doc_path, 'r');
+        $file_size = filesize($doc_path);
+        $file_mime = $this->config->item('document_file_mime');
+        $id = $this->uploadFile($storage_account, $name, $file_mime, $file_size, $file, true);
+        fclose($file);
+        return $id;
+    }
+    public function createSpreadSheet($storage_account, $name){
+        $doc_path = $this->config->item('spreadsheet_file_path');
+        $file = fopen($doc_path, 'r');
+        $file_size = filesize($doc_path);
+        $file_mime = $this->config->item('spreadsheet_file_mime');
+        $id = $this->uploadFile($storage_account, $name, $file_mime, $file_size, $file, true);
+        fclose($file);
+        return $id;
+    }
+    public function createPresentation($storage_account, $name){
+        $doc_path = $this->config->item('presentation_file_path');
+        $file = fopen($doc_path, 'r');
+        $file_size = filesize($doc_path);
+        $file_mime = $this->config->item('presentation_file_mime');
+        $id = $this->uploadFile($storage_account, $name, $file_mime, $file_size, $file, true);
+        fclose($file);
+        return $id;
+    }
 }

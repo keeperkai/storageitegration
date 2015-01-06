@@ -472,5 +472,14 @@ $config['provider_info'] = array(
 //$config['client_memory_limit'] = 100*1024*1024;//100mb, in bytes
 $config['client_memory_limit'] = 50*1024*1024;//50mb, in bytes
 
+
+
+$config['document_file_path'] = APPPATH.'document_templates/doc_template.docx';
+$config['document_file_mime'] = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+$config['spreadsheet_file_path'] = APPPATH.'document_templates/spreadsheet_template.xlsx';
+$config['spreadsheet_file_mime'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+$config['presentation_file_path'] = APPPATH.'document_templates/presentation_template.pptx';
+$config['presentation_file_mime'] = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+
 /* End of file config.php */
 /* Location: ./application/config/config.php */

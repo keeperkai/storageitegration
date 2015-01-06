@@ -14,7 +14,7 @@
   </div>
     <table class='table'>
 	<thead>
-	<tr><th>平台類型</th><th>代碼</th><th>聯結日期/時間</th><th>容量(MB)</th></tr>
+	<tr><th>平台類型</th><th>名稱</th><th>聯結日期/時間</th><th>容量(MB)</th></tr>
 	</thead>
 
 <tbody>
@@ -22,7 +22,7 @@
 <?php
 $i = 0;
 foreach($storage_account as $acc) {
-    echo "<tr><td>".$acc['token_type']."</td><td>".$acc['storage_account_id']."</td><td>".$acc['time_stamp']."</td><td><div style='height:150px;width:150px;' id='pie_chart_".$i."'></div></td></tr>";
+    echo "<tr><td>".$acc['token_type']."</td><td>".$acc['storage_account_name']."</td><td>".$acc['time_stamp']."</td><td><div style='height:150px;width:150px;' id='pie_chart_".$i."'></div></td></tr>";
     $i++;
 }
 

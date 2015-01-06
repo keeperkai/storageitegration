@@ -864,10 +864,10 @@ class SchedulerModel extends CI_Model
         
         //get all the accounts and their info of the current user
         
-		//$accounts = $this->storageAccountModel->getStorageAccountWithSchedulingInfo($user);
+		$accounts = $this->storageAccountModel->getStorageAccountWithSchedulingInfo($user);
         //$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfo($user);
         //$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfoForceSplit($user, $size);
-        $accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfoForceShuffle($user, $size, 0.4);//sets all free quota to 0.8 of uploading file
+        //$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfoForceShuffle($user, $size, 0.4);//sets all free quota to 0.8 of uploading file
 		//$accounts = $this->storageAccountModel->getStorageAccountForceMultiChunked($user, $size);//forces api copy and chunk level assign with both client/server
 		
         
@@ -929,7 +929,7 @@ class SchedulerModel extends CI_Model
 			if($shuffle_data){
 				$output['status'] = 'need_shuffle';
 				$output['schedule_data'] = array(
-					'shuffle'=>$shuffle_data['schedule_data'],
+                    'shuffle'=>$shuffle_data['schedule_data'],
 					'upload'=>array(array(
 							'type'=>'whole',
 							'target_account'=>$shuffle_data['target_account']['storage_account_id']

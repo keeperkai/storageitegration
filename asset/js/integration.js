@@ -1,3 +1,25 @@
+var isPageBusy = false;
+function startWaitingAnimation(){
+  $(document.body).addClass('waiting');
+  isPageBusy = true;
+}
+function endWaitingAnimation(){
+  $(document.body).removeClass('waiting');
+  isPageBusy = false;
+}
+function humanReadableBytes(numBytes){
+  if(numBytes<1024){
+    return numBytes+' Bytes';
+  }else if(numBytes<1024*1024){
+    return Math.round(numBytes/1024) + ' KB';
+  }else if(numBytes<1024*1024*1024){
+    return Math.round(numBytes/(1024*1024)) + ' MB';
+  }else if(numbytes<1024*1024*1024*1024){
+    return Math.round(numBytes/(1024*1024*1024)) + ' GB';
+  }else{
+    return Math.round(numBytes/(1024*1024*1024*1024)) + ' TB';
+  }
+}
 //download a file directly from the browser
 function downloadFile(){
   var virtual_file_id = rightClickedNode.virtual_file_id;
@@ -38,45 +60,6 @@ function getUserRole(user, info){
   else if(info.reader.hasOwnProperty(user)) return 'reader';
   else return false;
 }
-/*
-function permissionDeleted(target_account, original_info){
-  
-  
-  var original_role = getUserRole(original_info);
-  //see if the account is in the original info
-  if(original_role!= false){//if so we need to update or insert the delete
-    //check if it has already been deleted before( this could happen when a user deletes the permission and adds a new one with the same account )
-  }else{//if the account isn't in the original info, we need to delete the permission in the share_changes.permission_insert
-  
-  }
-}
-function permissionModified(target_account, new_permission, original_info){
-  
-  if(share_changes.permission_insert.hasOwnProperty(target_account)){//check if the permission exists in the share_changes inserted
-    //if so, change the permission in the permission_insert
-    share_changes.permission_insert[target_account] = new_permission;
-  }else{//if the permission does not exist in the inserted changes, it was originally from the original_info
-    //see if we already changed this before, if so change the permission_change
-    if(share_changes.permission_change.hasOwnProperty(target_account)){
-      //we changed it before, just check if it is the same as the original permission, if so delete this change
-      //search for the account in the original array
-      var original_role = getUserRole(target_account, original_info);
-      if(original_role != false){
-        console.log('there was an error, the account does not exist in inserted and the original share info while trying to change it');
-        return;
-      }//there should be no case where this happens
-      if(original_role == new_permission){//delete the change
-        delete share_changes.permission_change[target_account];
-      }else{//modify the change
-        share_changes.permission_change[target_account] = new_permission;
-      }
-    }else{//we haven't changed it before, so we need to set the permission
-      share_changes.permission_change[target_account] = new_permission;
-    }
-  }
-}
-*/
-
 //inserts a permission from the bottom of the share panel
 function insertPermission(){
   var accountname = $('#filesharepanel').find('#file_share_account_input').val();
@@ -154,8 +137,6 @@ function extractSharePanelInfo(){
   */
   output['writer'] = writers;
   output['reader'] = readers;
-  console.log('extracted:')
-  console.log(output);
   return output;
 }
 /*
@@ -247,8 +228,6 @@ function getShareInfoChanges(originalinfo, newinfo){
   output['permission_delete'] = deleted;
   output['permission_insert'] = inserted;
   output['updated'] = updated;
-  console.log('changes:');
-  console.log(output);
   return output;
 }
 function closeSharePanel(){
@@ -261,8 +240,10 @@ function commitShareChange(original_info){//commits the changes to share info to
   var changes = getShareInfoChanges(original_info, newinfo);
   if(changes.updated){//there was a change
     //ajax
+    startWaitingAnimation();
     FileController.modifyShareInfo(virtual_file_id, changes, function(){
       closeSharePanel();
+      endWaitingAnimation();
     });
   }
   closeSharePanel();
@@ -339,7 +320,9 @@ function showSharePanel(){
   if(rightClickedNode == null) return;
   if(rightClickedNode.virtual_file_id < 0) return;//any of the root directory or shared root directory.
   var virtual_file_id = rightClickedNode.virtual_file_id;
+  startWaitingAnimation();
   FileController.getShareInfo(virtual_file_id, function(info){
+    endWaitingAnimation();
     //check if the user has the right to access this info
     if(info.status == 'success'){
       $('#filesharepanel').dialog('open');
@@ -424,14 +407,113 @@ function getCurrentRightClickedParentId(){
     return rightClickedNode.parent_virtual_file_id;
   }
 }
+function updateContextMenuOptions(){
+  //新增
+  var new_disabled = 'false';
+  if(rightClickedNode == null){
+    new_disabled = 'false';
+  }else if(rightClickedNode.virtual_file_id == -2){//shared root
+    new_disabled = 'true';
+  }else if(rightClickedNode.role == 'reader'|| rightClickedNode.file_type != 'folder'){//user doesn't have the access to the file/directory he is rclicking on
+    new_disabled = 'true';
+  }else{
+    new_disabled = 'false';
+  }
+  $('#contextmenustub').contextMenu('update', [
+    {
+      name:'新增',
+      disable:new_disabled
+    }
+  ]);
+  //上傳檔案至此資料夾
+  var upload_disabled = 'false';
+  if(rightClickedNode == null){
+    upload_disabled = 'false';
+  }else if(rightClickedNode.virtual_file_id == -2){//shared root
+    upload_disabled = 'true';
+  }else if(rightClickedNode.role == 'reader' || rightClickedNode.file_type != 'folder'){
+    upload_disabled = 'true';
+  }else{
+    upload_disabled = 'false';
+  }
+  $('#contextmenustub').contextMenu('update', [
+      {
+        name:'上傳檔案至此資料夾',
+        disable: upload_disabled
+      }
+    ]);
+  //刪除已選擇之檔案(可按住crtl+滑鼠左鍵重複選擇)
+  var delete_disabled = 'false';
+  var treeObj = $.fn.zTree.getZTreeObj("filesystempanel");
+  var selectedNodes = treeObj.getSelectedNodes();
+  if(selectedNodes.length>0) delete_disabled = 'false';
+  else delete_disabled = 'true';
+  $('#contextmenustub').contextMenu('update', [
+    {
+      name:'刪除已選擇之檔案(可按住crtl+滑鼠左鍵重複選擇)',
+      disable:delete_disabled
+    }
+  ]);
+  //與其他使用者共用
+  var share_disabled = 'false';
+  if(rightClickedNode == null){
+    share_disabled = 'true';
+  }else if(rightClickedNode.virtual_file_id == -2){//shared root
+    upload_disabled = 'true';
+  }else if(rightClickedNode.role == 'reader' || rightClickedNode.virtual_file_id<0){
+    share_disabled = 'true';
+  }
+  $('#contextmenustub').contextMenu('update', [
+    {
+      name:'與其他使用者共用',
+      disable:share_disabled
+    }
+  ]);
+  //檢視檔案資訊, 編輯/檢視, 下載檔案
+  var metadata_disabled = 'false';
+  if(rightClickedNode == null){
+    metadata_disabled = 'true';
+  }else if(rightClickedNode.virtual_file_id == -2){//shared root
+    upload_disabled = 'true';
+  }else if(rightClickedNode.file_type == 'folder'){
+    metadata_disabled = 'true';
+  }
+  $('#contextmenustub').contextMenu('update', [
+    {
+      name:'檢視檔案資訊',
+      disable:metadata_disabled
+    },
+    {
+      name:'編輯/檢視',
+      disable:metadata_disabled
+    },
+    {
+      name:'下載檔案',
+      disable:metadata_disabled
+    }
+  ]);
+}
 //for ztree goto:http://www.jqueryscript.net/demo/Powerful-Multi-Functional-jQuery-Folder-Tree-Plugin-zTree/demo/en/
 var rightClickedNode = {};
 function fileOnRightClick(event, treeId, treeNode){
-  //event.preventDefault();
   rightClickedNode = treeNode;
-	$("#rightclickdialog").dialog( "option", "position", { my: "left top", of: event } );
-  $("#rightclickdialog").dialog("open");
-  $("#rightclickdialog").show();
+  //test if the right clicked node is a node currently selected, if so, keep the selection, if not select the current node
+  var treeObj = $.fn.zTree.getZTreeObj("filesystempanel");
+  var selectedNodes = treeObj.getSelectedNodes();
+  var matched = false;
+  for(var i=0;i<selectedNodes.length;++i){
+    if(rightClickedNode == selectedNodes[i]){
+      matched = true;
+      break;
+    }
+  }
+  if(!matched){
+    treeObj.selectNode(rightClickedNode, false);
+  }
+  //update the enable/disabled options according to the file that has been clicked on
+  updateContextMenuOptions();
+  $('#contextmenustub').contextMenu('update', [], {'left':event.pageX,'top':event.pageY});//set it to the right click position
+  $('#contextmenustub').trigger('FileRightClicked', event);
 }
 /*
 function fileOnClick(event, treeId, treeNode, clickFlag){
@@ -449,8 +531,24 @@ function makeDir(parent_id, filename){
   registerFileToSystem('folder', filename, 'dir', parent_id);
 	
 }
-function showFilenameDialog(){
-  $('#filenamedialog').dialog('open');
+function showFilenameDialog(){// for make folder
+  //$('#filenamedialog').dialog('open');
+  isPageBusy = true;
+  createInputStringDialog(
+      '輸入資料夾名稱',
+      '輸入名稱',
+      '建立資料夾',
+      function(doc_name){
+        startWaitingAnimation();
+        FileController.registerVirtualFileToSystem('', 'folder', filename, parent_id, [], function(){
+          endWaitingAnimation();
+          renderFileSystem();
+        });
+      },
+      function(){
+        isPageBusy = false;
+      }
+    );
   return false;
 }
 /*
@@ -535,7 +633,8 @@ function uploadAndConvertToDocument(file, chosen_provider){
 		'storage_id': storage_id
 	}];
 	resetUploadItems();
-  var parent_id = getCurrentRightClickedParentId();
+  //var parent_id = getCurrentRightClickedParentId();
+  var parent_id = (rightClickedNode == null)? -1 : rightClickedNode.virtual_file_id;
   //console.log(parent_id);
   if(parent_id==-2){
     parent_id=-1;
@@ -544,9 +643,9 @@ function uploadAndConvertToDocument(file, chosen_provider){
 }
 function resetUploadItems(){
 	resetFileChooser();
-	$('#fileuploaddialog').dialog('close');
+	//$('#fileuploaddialog').dialog('close');
+  endWaitingAnimation();
 	$('#documenthostingdialog').dialog('close');
-	//renderFileSystem();
 }
 function chooseStorageProvider(file){
   var ext = file.name.substring(file.name.lastIndexOf('.')+1);
@@ -599,8 +698,20 @@ function uploadNoneDocumentFile(file){
   //if there isn't then tell them to link one, if there is then just ask for the upload instruction
   //var group = checkFileGrouping(file);//returns group, and highest applicable storage providers
   var instructions = getUploadInstructions(file, function(instructions){
-    if(instructions.status!='impossible'){
-      var executor = new WholeUploadExecutor(instructions.schedule_data, file, getCurrentRightClickedParentId());
+    var schedule_data = instructions.schedule_data;
+    if(schedule_data.status!='impossible'){
+      if(instructions.status == 'need_shuffle'){//tell the user how much data will need to be moved and ask whether they want to shuffle or not
+        var msg = '帳號沒有足夠的空間，必須要先進行資料挪移，完成挪移後才能上傳此檔案:\n'
+          +'總共需要移動: '+humanReadableBytes(schedule_data.shuffle.total_shuffle_size)+' 的資料\n'
+          +'伺服器將會幫您移動: '+humanReadableBytes(schedule_data.shuffle.server_shuffle_size) +' 的資料\n'
+          +'您的瀏覽器需要移動: '+humanReadableBytes(schedule_data.shuffle.client_shuffle_size) +' 的資料\n'
+          +'是否要挪移資料?選擇"確定"進行挪移。或者選擇"取消"，連結一個有足夠空間的'+schedule_data.upload[0].target_account.token_type+'帳號。\n';
+        if(!confirm(msg)){
+          resetUploadItems();
+          return;
+        }
+      }
+      var executor = new WholeUploadExecutor(instructions.schedule_data, file, ((rightClickedNode == null)? -1: rightClickedNode.virtual_file_id));
       executor.complete = function(){
         resetUploadItems();
         renderFileSystem();
@@ -621,7 +732,8 @@ function upload() {
   var file = document.getElementById('file').files[0];
   if (file) {
     $('#fileuploadpanel').dialog('close');
-    $('#fileuploaddialog').dialog('open');
+    //$('#fileuploaddialog').dialog('open');
+    startWaitingAnimation();
     /*
     //determine which account to upload to
     var chosenaccount = decideAccountToUploadTo(accounts, file.size);
@@ -679,6 +791,7 @@ function deleteSelectedFiles(){
   var treeObj = $.fn.zTree.getZTreeObj("filesystempanel");
   var selectedNodes = treeObj.getSelectedNodes();
   if(selectedNodes.length>0){
+    /*
     $.ajax({
       url: '../../files/deletefiles',
       type: 'POST',
@@ -695,6 +808,12 @@ function deleteSelectedFiles(){
         alert(err);
         alert(error);
       }
+    });
+    */
+    startWaitingAnimation();
+    FileController.deleteFiles(selectedNodes, function(){
+      renderFileSystem();
+      endWaitingAnimation();
     });
   }
 }
@@ -736,7 +855,10 @@ function getFileTree(){
   });
   return output;
 }
+var isDraggingFile = false;
 function beforeDrag(treeId, treeNodes) {
+  isPageBusy = true;
+  isDraggingFile = true;
   for (var i=0,l=treeNodes.length; i<l; i++) {
     if (treeNodes[i].drag === false) {
       return false;
@@ -752,6 +874,8 @@ function beforeDrop(treeId, treeNodes, targetNode, moveType) {
   }else{//no target node
     moveFileInFileSystem(treeNodes, -1);
   }
+  isPageBusy = false;
+  isDraggingFile = false;
   return false;
 }
 function getPrevOpenedDirIds(prevnodes){
@@ -763,8 +887,49 @@ function getPrevOpenedDirIds(prevnodes){
   }
   return output;
 }
-function constructZTree(filetree, prevOpenedDirIds){
+/*
+  transforms the received file tree from server to a z-tree acceptable format,
+  including setting icons for files, opening previously opened directories...
+*/
+function constructZTree(filetree, prevOpenedDirIds, prevSelectedNodes){
+  //map: file extension --> icon image path.
+  var icon_map = {
+    'google_document':'../../../asset/img/google_doc_icon.jpg',
+    'google_spreadsheet':'../../../asset/img/google_spreadsheet_icon.jpg',
+    'google_presentation':'../../../asset/img/google_presentation_icon.jpg',
+    'docx':'../../../asset/img/ms_word.png',
+    'xlsx':'../../../asset/img/ms_excel.png',
+    'pptx':'../../../asset/img/ms_powerpoint.png',
+    //sound formats
+    'wav':'../../../asset/img/sound.png',
+    'aiff':'../../../asset/img/sound.png',
+    'mp3':'../../../asset/img/sound.png',
+    'au':'../../../asset/img/sound.png',
+    'wma':'../../../asset/img/sound.png',
+    'wv':'../../../asset/img/sound.png',
+    //video formats:
+    'mp4':'../../../asset/img/video.png',
+    'flv':'../../../asset/img/video.png',
+    'wmv':'../../../asset/img/video.png',
+    'avi':'../../../asset/img/video.png',
+    'mov':'../../../asset/img/video.png',
+    'rmvb':'../../../asset/img/video.png',
+    'mpg':'../../../asset/img/video.png',
+    'mpeg':'../../../asset/img/video.png',
+    
+    //compressed file formats
+    'zip':'../../../asset/img/compress.png',
+    'rar':'../../../asset/img/compress.png',
+    //image file formats
+    'png':'../../../asset/img/image.png',
+    'bmp':'../../../asset/img/image.png',
+    'jpg':'../../../asset/img/image.png',
+    'gif':'../../../asset/img/image.png',
+    'tif':'../../../asset/img/image.png',
+    'tiff':'../../../asset/img/image.png'
+    
   
+  };
   for (var i=0;i<filetree.length;++i) {
     var file = filetree[i];
 	//if it was previously opened, open it now
@@ -773,14 +938,20 @@ function constructZTree(filetree, prevOpenedDirIds){
       delete(prevOpenedDirIds[file['virtual_file_id']]);
     }
     //set droppable to true if it is a dir, otherwise false.
-    if(file['file_type'] == 'folder'){
+    if(file.virtual_file_id == -2){
+      file['drop'] = false;
+      file['isParent'] = true;
+    }else if(file['file_type'] == 'folder'){
       file['drop'] = true;
       file['isParent'] = true;
     }else{
       file['drop'] = false;
     }
     //ToDo: set icons according to extension
-    
+    var extension = file['extension'];
+    if(icon_map.hasOwnProperty(extension)){
+      file['icon'] = icon_map[extension];
+    }
     //--------------------------------
   }
   return filetree;
@@ -788,17 +959,33 @@ function constructZTree(filetree, prevOpenedDirIds){
 function renderFileSystem(){
   var treedata = getFileTree();
   var prevtree = $.fn.zTree.getZTreeObj('filesystempanel');
+  //preserve the previous opened folders
   var prevOpenedDirIds = {};
   if(prevtree != null){
     var prevnodes = prevtree.transformToArray(prevtree.getNodes());
     prevOpenedDirIds = getPrevOpenedDirIds(prevnodes);
   }
-  var zNodes = constructZTree(treedata, prevOpenedDirIds);
+  //preserve the previous selected nodes
+  var sel_vfile_id_map = {};
+  if(prevtree !=null){
+    var selectedNodes = prevtree.getSelectedNodes();
+    for(var i=0;i<selectedNodes.length;++i){
+      sel_vfile_id_map[selectedNodes[i].virtual_file_id] = true;
+    }
+  }
+  //console.log(sel_vfile_id_map);
+  var zNodes = constructZTree(treedata, prevOpenedDirIds, selectedNodes);
+  console.log(zNodes);
   var setting = {
     edit: {
       enable: true,
       showRemoveBtn: false,
-      showRenameBtn: false
+      showRenameBtn: false,
+      drag:{
+        inner: true,
+        prev: false,
+        next: false
+      }
     },
     data: {
       simpleData: {
@@ -811,8 +998,20 @@ function renderFileSystem(){
       onRightClick: fileOnRightClick
     }
   };
+  
   $.fn.zTree.destroy();
   $.fn.zTree.init($("#filesystempanel"), setting, zNodes);
+  //select prev selected nodes
+  var newtree = $.fn.zTree.getZTreeObj('filesystempanel');
+  var newnodes = newtree.transformToArray(newtree.getNodes());
+  for(var i=0;i<newnodes.length;++i){
+    //console.log('new node vfile id:'+newnodes[i].virtual_file_id);
+    if(sel_vfile_id_map.hasOwnProperty(newnodes[i].virtual_file_id)){
+      //console.log('selected:'+newnodes[i].virtual_file_id);
+      newtree.selectNode(newnodes[i], true)
+    }
+  }
+  
   
 }
 function resetFilenameDialog(){
@@ -820,6 +1019,173 @@ function resetFilenameDialog(){
 }
 function showUploadPanel(){
   $('#fileuploadpanel').dialog('open');
+}
+function showFileInfo(){
+  //get the right click virtual_file_id
+  if(rightClickedNode == null) return;
+  if(rightClickedNode.virtual_file_id < 0) return;//any of the root directory or shared root directory.
+  var virtual_file_id = rightClickedNode.virtual_file_id;
+  //get the file info of the virtual file
+  FileController.getVirtualFileInfo(virtual_file_id, function(resp){
+    if(resp.status == 'error'){
+      alert(resp.errorMessage);
+    }else{//success
+      var file_info = resp.file_info;
+      //render the file info in a dialog
+      createFileInfoDialog(file_info);
+    }
+  })
+}
+
+/*
+  create a new dialog showing the info file_info, the dom element will be created and appended to the document and destroyed/deleted when closed
+  file_info format:
+  {
+    name:,
+    mime_type:,
+    ...virtual file properties
+    total_file_size: the sum of the storage files
+    ,
+    storage_files:
+    [
+      {
+        storage file properties...including storage_account_id
+      },
+      {
+        ...
+      }
+    ],
+    storage_account_map:
+      {
+        size: number of storage accounts,
+        storage_accounts:
+        {
+          'storage_account_id1': {
+            owner:account_name
+            provider: googledrive, dropbox, onedrive ...etc
+          },
+          'storage_account_id2': ...
+        }
+      }
+  }
+*/
+function createFileInfoDialog(fileinfo){
+  var new_dialog = $('<div></div>').appendTo(document.body);
+  //basic info
+  $(new_dialog).append(
+    '<dl class="dl-horizontal">'+
+    '<dt>檔案型態</dt><dd>'+fileinfo.extension+'</dd>'+
+    '<dt>資料型態</dt><dd>'+fileinfo.mime_type+'</dd>'+
+    '<dt>檔案大小</dt><dd>'+fileinfo.total_file_size+'</dd>'+
+    '<dt>允許切割</dt><dd>'+((fileinfo.allow_chunk == true)? '是' : '否')+'</dd>'+
+    '<dt>檔案是否已經分割</dt><dd>'+((fileinfo.storage_account_map.size>1)? '是' : '否')+'</dd>'+
+    '<dt>檔案存放在</dt><dd>'+fileinfo.storage_account_map.size+'組帳號中</dd></dl>'
+  );
+  //storage info for each account, render into a table
+  var tablestr = '<table class = "table table-hover table-bordered"><thead><tr><td>帳戶擁有人</td><td>帳戶名稱</td><td>帳戶類型</td><td>分割檔案資訊</td></tr></thead><tbody>';
+  var storage_account_map = fileinfo.storage_account_map.storage_accounts;
+  var storage_files = fileinfo.storage_files;
+  for(var storage_account_id in storage_account_map){
+    if(storage_account_map.hasOwnProperty(storage_account_id)){
+      var acc = storage_account_map[storage_account_id];
+      //render each storage account in a row
+      var rowstr = '<tr><td>'+acc['owner']+'</td><td>'+acc['storage_account_name']+'</td><td>'+acc['provider']+'<td>';
+      var slicestr = '';
+      //generate slice info
+      for(var i=0;i<storage_files.length;++i){
+        var sfile = storage_files[i];
+        if(sfile['storage_account_id'] == storage_account_id){
+          slicestr+='分割大小: '+sfile['storage_file_size']+', 位元順序: '+sfile['byte_offset_start']+' - '+sfile['byte_offset_end']+'<br>';
+        }
+      }
+      rowstr += slicestr+'</td></tr>';
+    }
+    tablestr += rowstr;
+  }
+  tablestr += '</tbody></table>';
+  $(new_dialog).append(tablestr);
+  $(new_dialog).dialog({
+    title: fileinfo.name+'檔案資訊',
+    height:'auto',
+    width:'auto',
+    close: function(){
+      $(this).dialog('destroy').remove();
+    }
+  });
+}
+function createOnedriveDoc(doc_type){
+  //show a filename dialog
+  var parent_virtual_file_id = -1;
+  if(rightClickedNode != null){
+    parent_virtual_file_id = rightClickedNode.virtual_file_id;
+  }
+  (function(d_type, parent_folder_id){
+    var ms_d_type = '';
+    if(d_type == 'document') ms_d_type = 'Word';
+    else if(d_type == 'spreadsheet') ms_d_type = 'Excel';
+    else if(d_type == 'presentation') ms_d_type = 'Powerpoint';
+    isPageBusy = true;
+    createInputStringDialog(
+      '輸入OneDrive '+ms_d_type+' 檔名稱',
+      '輸入名稱',
+      '建立'+ms_d_type,
+      function(doc_name){
+        startWaitingAnimation();
+        FileController.createOnedriveDoc(d_type, doc_name, parent_folder_id, function(resp){
+          endWaitingAnimation();
+          if(resp.status=='success'){
+            renderFileSystem();
+          }else if(resp.status == 'error'){
+            alert(resp.errorMessage);
+          }else if(resp.status == 'need_account'){
+            if(confirm(resp.errorMessage + '，轉載至帳號管理頁面?')){
+              window.location.href = './manageaccount';
+            }
+          }else{
+            alert('Unrecognized status!');
+          }
+        });
+      },
+      function(){
+        isPageBusy = false;
+      }
+    );
+  })(doc_type, parent_virtual_file_id);
+}
+function createGoogleDoc(doc_type){
+  //show a filename dialog
+  var parent_virtual_file_id = -1;
+  if(rightClickedNode != null){
+    parent_virtual_file_id = rightClickedNode.virtual_file_id;
+  }
+  (function(d_type, parent_folder_id){
+    isPageBusy = true;
+    createInputStringDialog(
+      '輸入Google '+d_type+' 名稱',
+      '輸入名稱',
+      '建立'+d_type,
+      function(doc_name){
+        startWaitingAnimation();
+        FileController.createGoogleDoc(d_type, doc_name, parent_folder_id, function(resp){
+          endWaitingAnimation();
+          if(resp.status=='success'){
+            renderFileSystem();
+          }else if(resp.status == 'error'){
+            alert(resp.errorMessage);
+          }else if(resp.status == 'need_account'){
+            if(confirm(resp.errorMessage + '，轉載至帳號管理頁面?')){
+              window.location.href = './manageaccount';
+            }
+          }else{
+            alert('Unrecognized status!');
+          }
+        });
+      },
+      function(){
+        isPageBusy = false;
+      }
+    );
+  })(doc_type, parent_virtual_file_id);
 }
 var accounts = [];
 var documentExtensionConvertTable = {
@@ -833,6 +1199,106 @@ var documentExtensionConvertTable = {
   'docx':{'googledrive':{'download_extensions':['odt','html','pdf','docx']}},
   'odt':{'googledrive':{'download_extensions':['odt','html','pdf','docx']}}
 }
+var context_menu_object = [
+    {
+        name: '新增',
+        title: 'update button'
+        ,
+      subMenu: [
+        {
+          name: '新增資料夾',
+          title: 'make_folder',
+          fun: function () {
+              showFilenameDialog();
+          }
+        },
+        {
+          name: 'Google Document',
+          title: 'make_google_doc',
+          fun: function() {
+            createGoogleDoc('document');
+          }
+        },
+        {
+          name: 'Google Spreadsheet',
+          title: 'make_google_spreadsheet',
+          fun: function() {
+            createGoogleDoc('spreadsheet');
+          }
+        },
+        {
+          name: 'Google Presentation',
+          title: 'make_onedrive_presentation',
+          fun: function() {
+            createGoogleDoc('presentation');
+          }
+        },
+        {
+          name: 'Micro$oft Word (:P)',
+          title: 'make_onedrive_doc',
+          fun: function() {
+            createOnedriveDoc('document');
+          }
+        },
+        {
+          name: 'Micro$oft Excel (:P)',
+          title: 'make_onedrive_spreadsheet',
+          fun: function() {
+            createOnedriveDoc('spreadsheet');
+          }
+        },
+        {
+          name: 'Micro$oft PowerPoint (:P)',
+          title: 'make_onedrive_presentation',
+          fun: function() {
+            createOnedriveDoc('presentation');
+          }
+        }
+      ]
+    },
+    
+    {
+      name: '上傳檔案至此資料夾',
+      title: 'upload',
+      fun: function () {
+        showUploadPanel();
+      }
+    }, {
+        name: '刪除已選擇之檔案(可按住crtl+滑鼠左鍵重複選擇)',
+        title: 'delete',
+        fun: function () {
+          deleteSelectedFiles();
+        }
+  }, {
+        name: '與其他使用者共用',
+        title: 'share',
+        fun: function () {
+          showSharePanel();
+        }
+    }, {
+        name: '編輯/檢視',
+        title: 'edit_or_preview',
+        fun: function () {
+          editOrPreview();
+        }
+    }, {
+        name: '下載檔案',
+        title: 'download',
+        fun: function () {
+          downloadFile();
+        }
+  },
+    {
+      name: '檢視檔案資訊',
+      title: 'show_meta_data',
+      fun: function(){
+        showFileInfo();
+      }
+    }];
+function tryRenderFileSystem(){
+  if(document.hasFocus()&& !isPageBusy) renderFileSystem();
+  setTimeout(tryRenderFileSystem, 7000);
+}
 $(document).ready(function(){
   accounts = getAccounts();
   //console.log(filetree);
@@ -841,14 +1307,11 @@ $(document).ready(function(){
   $('#fileuploaddialog').dialog({
     autoOpen: false,
     height: 'auto',
-    width: 'auto'
+    width: 'auto',
+    modal: true
   });
-  $('#rightclickmenu').menu();
-  $('#rightclickdialog').dialog({autoOpen: false, dialogClass: 'noTitleStuff', width:'auto',height:'auto'});
-  $('#rightclickdialog').click(function(){
-    $('#rightclickdialog').dialog('close');
-  });
-	//$("#rightclickdialog").find(".ui-dialog-titlebar").hide();
+  //we use an invisible div to trigger the context menu
+  $('#contextmenustub').contextMenu(context_menu_object,{triggerOn:'FileRightClicked','left':0,'top':0});
   $('#filenamedialog').dialog({
     title: '輸入名稱',
     autoOpen: false,
@@ -858,11 +1321,19 @@ $(document).ready(function(){
       "以此名稱建立資料夾": function(){
         var filename = $('#inputfilename').val();
         if(filename.length>0){
-          var parent_id = getCurrentRightClickedParentId();
-          makeDir(parent_id, filename);
+          var parent_id = (rightClickedNode == null)? -1:rightClickedNode.virtual_file_id;
+          //makeDir(parent_id, filename);
+          startWaitingAnimation();
+          FileController.registerVirtualFileToSystem('', 'folder', filename, parent_id, [], function(){
+            endWaitingAnimation();
+            renderFileSystem();
+            $('#filenamedialog').dialog( "close" );
+          });
         }
+        /*
         renderFileSystem();
         $('#filenamedialog').dialog( "close" );
+        */
       },
       Cancel: function() {
         $('#filenamedialog').dialog( "close" );
@@ -875,9 +1346,12 @@ $(document).ready(function(){
   $('#filesharepanel').dialog({title:'設定共享權限', height:'auto', width:'auto', autoOpen:false});
   $('#fileuploadpanel').dialog({title:'檔案上傳', height:'auto', width:'auto', autoOpen:false});
   $('#documenthostingdialog').dialog({title:'選擇檔案轉換類型', height:'auto', width:'auto', autoOpen:false});
-	$(document.body).click(function(e){
-		if(e.which==1){
-			$('#rightclickdialog').dialog('close');
-		}
-	});
+  $('html').mouseup(function(){
+    if(isDraggingFile&&isPageBusy){
+      isPageBusy = false;
+      isDraggingFile = false;
+    }
+  });
+  //periodically try to render file tree
+  setTimeout(tryRenderFileSystem, 7000);
 });

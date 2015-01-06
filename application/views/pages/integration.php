@@ -1,19 +1,16 @@
+<script src="<?php echo base_url();?>asset/context_menu/contextMenu.min.js"></script>
+<link href="<?php echo base_url();?>asset/context_menu/contextMenu.css" rel="stylesheet" type="text/css" />
+<link href="<?php echo base_url();?>asset/css/waiting.css" rel="stylesheet" type="text/css" />
+
+
 <center>
+<div class='waiting_screen_full'></div>
 <div id='filesharepanel' style = "width:1000px;height:600px;overflow:scroll;"></div>
 <ul id="filesystempanel" class="ztree" style="width:500px;"></ul>
 <div id='fileuploadpanel' hidden>
 選擇上傳檔案:<input type="file" name="file" id="file" onchange='return upload();'/>
 </div>
-<div id='rightclickdialog' style='padding: 0;border: 0;height:0;width:auto;' hidden>
-<ul id='rightclickmenu'>
-<li onclick='return showFilenameDialog();'>新增資料夾</li>
-<li onclick='return showUploadPanel();'>上傳檔案至此資料夾</li>
-<li onclick='return deleteSelectedFiles();'>刪除已選擇之檔案(可按住crtl+滑鼠左鍵重複選擇)</li>
-<li onclick='return showSharePanel();'>與其他使用者共用</li>
-<li onclick='return editOrPreview();'>編輯/檢視</li>
-<li onclick='return downloadFile();'>下載檔案</li>
-</ul>
-</div>
+<div id='contextmenustub' hidden></div>
 <div id='fileuploaddialog' hidden>檔案上傳中，請稍候</div>
 <div id='filenamedialog' hidden>
 請輸入檔案名稱:<input id='inputfilename' type='text' size=32></input>
@@ -25,6 +22,9 @@
 同時在線上編輯。
 <table id='selecthostingtable' class='table'>
 </table>
+</div>
+<div id='fileinfodialog'>
+
 </div>
 <script src="<?php echo base_url();?>asset/js/jobexecutors.js"></script>
 <script src="<?php echo base_url();?>asset/js/googlefunctions.js"></script>
