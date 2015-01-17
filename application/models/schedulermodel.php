@@ -110,6 +110,8 @@ class SchedulerModel extends CI_Model
 		//sort data
 		usort($suitable_accounts, $account_sorting);
 		usort($source_files, array($this,"storageFileSizeHL"));
+        //echo 'source files:';
+        //var_dump($source_files);
 		//--
 		$target_quota = $s_target_quota;
 		$moved_files = array();
@@ -120,107 +122,167 @@ class SchedulerModel extends CI_Model
 		$min_cost = PHP_INT_MAX;
 		$min_cost_account_states = array();
 		$min_cost_moved_files = array();
-		for($i=1;$i<sizeof($source_files);$i++){
-			$sfile = $source_files[$i];
-			$lastfile = $source_files[$i-1];
-			if($sfile['storage_file_size']>$target_quota){
-				continue;
-			}
-			if($lastfile['storage_file_size']<=$target_quota){//the last file
-				//try to move the last file
-				$picked_acc_idx = $pickBestFitAccountAlgo($suitable_accounts, $lastfile['storage_file_size']);
-				
-				if($picked_acc_idx >= 0){
-					if($target_quota==$lastfile['storage_file_size']){//quota is met, this is an exact fit, just update the min_cost datas and break out
-						$min_cost = $s_target_quota;
-						$min_cost_schedule_data = $schedule_data;
-						$min_cost_schedule_data[] = array(
-							//'type'=>'whole',
-							'source_file'=>$lastfile['storage_file_id'],
-							'source_account'=>$source_account['storage_account_id'], 
-							'chunks'=>array(
+        //for source file size >=2
+        if(sizeof($source_files)>=2){
+            for($i=1;$i<sizeof($source_files);$i++){
+                $sfile = $source_files[$i];
+                $lastfile = $source_files[$i-1];
+                if($sfile['storage_file_size']>$target_quota){
+                    continue;
+                }
+                if($lastfile['storage_file_size']<=$target_quota){//the last file
+                    //try to move the last file
+                    $picked_acc_idx = $pickBestFitAccountAlgo($suitable_accounts, $lastfile['storage_file_size']);
+                    if($picked_acc_idx >= 0){
+                        if($target_quota==$lastfile['storage_file_size']){//quota is met, this is an exact fit, just update the min_cost datas and break out
+                            $min_cost = $s_target_quota;
+                            $min_cost_schedule_data = $schedule_data;
+                            $min_cost_schedule_data[] = array(
+                                //'type'=>'whole',
+                                'source_file'=>$lastfile['storage_file_id'],
+                                'source_account'=>$source_account['storage_account_id'], 
+                                'chunks'=>array(
+                                    array(
+                                        'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
+                                        'byte_offset_start'=>0,
+                                        'byte_offset_end'=>$lastfile['storage_file_size']-1
+                                    )
+                                )
+                            );
+                            //update min account and moved file states
+                            $min_cost_account_states = $suitable_accounts;
+                            $min_cost_account_states[$picked_acc_idx]['quota_info']['free'] -= $lastfile['storage_file_size'];
+                            $min_cost_account_states[$picked_acc_idx] = $this->updateStorageAccountMinFreeQuotaApiSingleFileLimit($min_cost_account_states[$picked_acc_idx]);
+                            $min_cost_moved_files = $moved_files;
+                            $min_cost_moved_files[]= $lastfile;
+                            break;
+                        }else{//quota isn't met yet, update the datas and keep going.
+                            //update all data, including sorting the suitable accounts
+                            $target_quota -= $lastfile['storage_file_size'];
+                            $schedule_data[] = array(
+                                //'type'=>'whole',
+                                'source_file'=>$lastfile['storage_file_id'],
+                                'source_account'=>$source_account['storage_account_id'], 
+                                //'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id']
+                                'chunks'=>array(
+                                    array(
+                                        'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
+                                        'byte_offset_start'=>0,
+                                        'byte_offset_end'=>$lastfile['storage_file_size']-1
+                                    )
+                                )
+                            );
+                            $moved_files[]=$lastfile;
+                            $cost += $lastfile['storage_file_size'];
+                            //sort the suitable accounts again, we can optimize this later by using binary search to insert the account we just updated
+                            $suitable_accounts[$picked_acc_idx]['quota_info']['free'] -= $lastfile['storage_file_size'];
+                            $suitable_accounts[$picked_acc_idx] = $this->updateStorageAccountMinFreeQuotaApiSingleFileLimit($suitable_accounts[$picked_acc_idx]);
+                            usort($suitable_accounts, $account_sorting);
+                        }
+                        
+                    }//else, can't fit the file, move on
+                    //whether succeed or not, we need to move to the next file, except if we had an exact match
+                    continue;
+                }
+                //found a file that is smaller than the target quota
+                if(($sfile['storage_file_size']<$target_quota)&&($lastfile['storage_file_size']>=$target_quota)){
+                    //test if it is possible to move the last file
+                    $picked_acc_idx = $pickBestFitAccountAlgo($suitable_accounts, $lastfile['storage_file_size']);
+                    //if yes then test if picking the last file will yield a smaller cost than the previous yields
+                    if($picked_acc_idx >= 0){
+                        $expectedcost = $cost+$lastfile['storage_file_size'];
+                        if($expectedcost<$min_cost){
+                            //update the min datas
+                            $min_cost = $expectedcost;
+                            $min_cost_schedule_data = $schedule_data;
+                            $min_cost_schedule_data[] = array(
+                                //'type'=>'whole',
+                                'source_file'=>$lastfile['storage_file_id'],
+                                'source_account'=>$source_account['storage_account_id'], 
+                                //'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id']
+                                'chunks'=>array(
+                                    array(
+                                        'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
+                                        'byte_offset_start'=>0,
+                                        'byte_offset_end'=>$lastfile['storage_file_size']-1
+                                    )
+                                )
+                            );
+                            //update min account and moved file states
+                            $min_cost_account_states = $suitable_accounts;
+                            $min_cost_account_states[$picked_acc_idx]['quota_info']['free'] -= $lastfile['storage_file_size'];
+                            $min_cost_account_states[$picked_acc_idx] = $this->updateStorageAccountMinFreeQuotaApiSingleFileLimit($min_cost_account_states[$picked_acc_idx]);
+                            $min_cost_moved_files = $moved_files;
+                            $min_cost_moved_files[]= $lastfile;
+                            //if the quota is exactly met, just break.
+                            if($target_quota==$lastfile['storage_file_size']) break;
+                            //move on to the next file, it will automatically be picked if possible to move in the above code
+                        }
+                    }
+                    //no account was picked because this file cannot be fit in any accounts
+                    //move on to next file that is smaller
+                }
+                
+            }
+            //at this point, the last file of source_files will not be added no matter what(because it doesn't loop to the last file)
+            $sfile = $source_files[sizeof($source_files)-1];
+            $picked_acc_idx = $pickBestFitAccountAlgo($suitable_accounts, $sfile['storage_file_size']);
+            //if yes then test if picking the last file will yield a smaller cost than the previous yields
+            //echo 'picked account for last file';
+            //var_dump($picked_acc_idx);
+            if($picked_acc_idx >= 0){//last file can fit
+                if($sfile['storage_file_size']>=$target_quota){
+                    $expectedcost = $cost+$sfile['storage_file_size'];
+                    if($expectedcost<$min_cost){
+                        //update the min datas
+                        $min_cost = $expectedcost;
+                        $min_cost_schedule_data = $schedule_data;
+                        $min_cost_schedule_data[] = array(
+                            //'type'=>'whole',
+                            'source_file'=>$sfile['storage_file_id'],
+                            'source_account'=>$source_account['storage_account_id'], 
+                            //'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id']
+                            'chunks'=>array(
                                 array(
                                     'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
                                     'byte_offset_start'=>0,
-                                    'byte_offset_end'=>$lastfile['storage_file_size']-1
+                                    'byte_offset_end'=>$sfile['storage_file_size']-1
                                 )
                             )
-						);
-						//update min account and moved file states
-						$min_cost_account_states = $suitable_accounts;
-						$min_cost_account_states[$picked_acc_idx]['quota_info']['free'] -= $lastfile['storage_file_size'];
-						$min_cost_account_states[$picked_acc_idx] = $this->updateStorageAccountMinFreeQuotaApiSingleFileLimit($min_cost_account_states[$picked_acc_idx]);
-						$min_cost_moved_files = $moved_files;
-						$min_cost_moved_files[]= $lastfile;
-						break;
-					}else{//quota isn't met yet, update the datas and keep going.
-						//update all data, including sorting the suitable accounts
-						$target_quota -= $lastfile['storage_file_size'];
-						$schedule_data[] = array(
-							//'type'=>'whole',
-							'source_file'=>$lastfile['storage_file_id'],
-							'source_account'=>$source_account['storage_account_id'], 
-							//'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id']
-							'chunks'=>array(
-                                array(
-                                    'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
-                                    'byte_offset_start'=>0,
-                                    'byte_offset_end'=>$lastfile['storage_file_size']-1
-                                )
-							)
-						);
-						$moved_files[]=$lastfile;
-						$cost += $lastfile['storage_file_size'];
-						//sort the suitable accounts again, we can optimize this later by using binary search to insert the account we just updated
-						$suitable_accounts[$picked_acc_idx]['quota_info']['free'] -= $lastfile['storage_file_size'];
-						$suitable_accounts[$picked_acc_idx] = $this->updateStorageAccountMinFreeQuotaApiSingleFileLimit($suitable_accounts[$picked_acc_idx]);
-						usort($suitable_accounts, $account_sorting);
-					}
-					
-				}//else, can't fit the file, move on
-				//whether succeed or not, we need to move to the next file, except if we had an exact match
-				continue;
-			}
-			//found a file that is smaller than the target quota
-			if(($sfile['storage_file_size']<$target_quota)&&($lastfile['storage_file_size']>=$target_quota)){
-				//test if it is possible to move the last file
-				$picked_acc_idx = $pickBestFitAccountAlgo($suitable_accounts, $lastfile['storage_file_size']);
-				//if yes then test if picking the last file will yield a smaller cost than the previous yields
-				if($picked_acc_idx >= 0){
-					$expectedcost = $cost+$lastfile['storage_file_size'];
-					if($expectedcost<$min_cost){
-						//update the min datas
-						$min_cost = $expectedcost;
-						$min_cost_schedule_data = $schedule_data;
-						$min_cost_schedule_data[] = array(
-							//'type'=>'whole',
-							'source_file'=>$lastfile['storage_file_id'],
-							'source_account'=>$source_account['storage_account_id'], 
-							//'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id']
-							'chunks'=>array(
-								array(
-                                    'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
-                                    'byte_offset_start'=>0,
-                                    'byte_offset_end'=>$lastfile['storage_file_size']-1
-                                )
-							)
-						);
-						//update min account and moved file states
-						$min_cost_account_states = $suitable_accounts;
-						$min_cost_account_states[$picked_acc_idx]['quota_info']['free'] -= $lastfile['storage_file_size'];
-						$min_cost_account_states[$picked_acc_idx] = $this->updateStorageAccountMinFreeQuotaApiSingleFileLimit($min_cost_account_states[$picked_acc_idx]);
-						$min_cost_moved_files = $moved_files;
-						$min_cost_moved_files[]= $lastfile;
-						//if the quota is exactly met, just break.
-						if($target_quota==$lastfile['storage_file_size']) break;
-						//move on to the next file, it will automatically be picked if possible to move in the above code
-					}
-				}
-				//no account was picked because this file cannot be fit in any accounts
-				//move on to next file that is smaller
-			}
-			
-		}
+                        );
+                        //update min account and moved file states
+                        $min_cost_account_states = $suitable_accounts;
+                        $min_cost_account_states[$picked_acc_idx]['quota_info']['free'] -= $sfile['storage_file_size'];
+                        $min_cost_account_states[$picked_acc_idx] = $this->updateStorageAccountMinFreeQuotaApiSingleFileLimit($min_cost_account_states[$picked_acc_idx]);
+                        $min_cost_moved_files = $moved_files;
+                        $min_cost_moved_files[]= $sfile;
+                    }
+                }else{//still can't meet quota
+                    $target_quota -= $sfile['storage_file_size'];
+                    $schedule_data[] = array(
+                        //'type'=>'whole',
+                        'source_file'=>$sfile['storage_file_id'],
+                        'source_account'=>$source_account['storage_account_id'], 
+                        //'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id']
+                        'chunks'=>array(
+                            array(
+                                'target_account'=>$suitable_accounts[$picked_acc_idx]['storage_account_id'],
+                                'byte_offset_start'=>0,
+                                'byte_offset_end'=>$sfile['storage_file_size']-1
+                            )
+                        )
+                    );
+                    $moved_files[]=$sfile;
+                    $cost += $sfile['storage_file_size'];
+                    //sort the suitable accounts again, we can optimize this later by using binary search to insert the account we just updated
+                    $suitable_accounts[$picked_acc_idx]['quota_info']['free'] -= $sfile['storage_file_size'];
+                    $suitable_accounts[$picked_acc_idx] = $this->updateStorageAccountMinFreeQuotaApiSingleFileLimit($suitable_accounts[$picked_acc_idx]);
+                }
+            }
+            
+        }
+        
+        
 		if(sizeof($source_files)==1){
 			$sfile = $source_files[0];
 			$picked_acc_idx = $pickBestFitAccountAlgo($suitable_accounts, $sfile['storage_file_size']);
@@ -661,7 +723,7 @@ class SchedulerModel extends CI_Model
 		foreach($original as $key=>$sfile){
 			$storage_file_id = $sfile['storage_file_id'];
 			if(array_key_exists($storage_file_id, $map)){
-				$original[$key] = $map[$storage_file_id];;
+				array_splice($original, $key, 1);
 			}
 		}
 		return $original;
@@ -725,10 +787,17 @@ class SchedulerModel extends CI_Model
                     //var_dump($acc);
 				}
 			}
+            //echo 'same provider accounts: ';
+            //var_dump($same_provider_accounts);
+            //var_dump($target_account);
+            //var_dump($movable_storage_files);
+            //echo 'look here-------------------------------------------';
 			$result = $this->bestFitShuffle($same_provider_accounts, $target_account, $movable_storage_files, $target_quota, true);
             //echo 'api copy result: ';
             //var_dump($result);
 			$this->updateSimulationStates($result, $schedule_data, $cost, $target_quota, $other_accounts, $movable_storage_files);
+            //echo 'movable storage files';
+            //var_dump($movable_storage_files);
 			//if completed, output data
 			if($result['quota_met']){
 				return array('cost'=>0, 'schedule_data'=>$schedule_data);//no cost
@@ -816,6 +885,7 @@ class SchedulerModel extends CI_Model
 				}
 			}
 			$result = $this->smallCostShuffle($other_accounts, $suitable_accounts[$i], $size);
+            //var_dump($result);
             if($result){
 				if($min_cost>$result['cost']){
 					$min_cost = $result['cost'];

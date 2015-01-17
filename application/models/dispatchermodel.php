@@ -196,8 +196,7 @@ class DispatcherModel extends CI_Model
 		$shuffle_id = $this->shuffleJobModel->writeShuffleJobToDatabase($dispatched_jobs, $user);
 		//filtering the client jobs, and then return the client jobs in the format that the client needs.
 		$shuffle_job = $this->shuffleJobModel->getShuffleJobData($shuffle_id);
-		
-		
+		//var_dump($shuffle_job);
 		return $shuffle_job;
         
 	}

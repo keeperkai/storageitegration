@@ -538,8 +538,12 @@ function showFilenameDialog(){// for make folder
       '輸入資料夾名稱',
       '輸入名稱',
       '建立資料夾',
-      function(doc_name){
+      function(filename){
         startWaitingAnimation();
+        var parent_id = (rightClickedNode == null)? -1 : rightClickedNode.virtual_file_id;
+        if(parent_id==-2){
+          parent_id=-1;
+        }
         FileController.registerVirtualFileToSystem('', 'folder', filename, parent_id, [], function(){
           endWaitingAnimation();
           renderFileSystem();
@@ -642,10 +646,10 @@ function uploadAndConvertToDocument(file, chosen_provider){
 	registerFileToSystem('file', file.name, file.name.substring(file.name.lastIndexOf('.')+1), parent_id, storage_file_data);
 }
 function resetUploadItems(){
-	resetFileChooser();
-	//$('#fileuploaddialog').dialog('close');
+  resetFileChooser();
+  //$('#fileuploaddialog').dialog('close');
   endWaitingAnimation();
-	$('#documenthostingdialog').dialog('close');
+  $('#documenthostingdialog').dialog('close');
 }
 function chooseStorageProvider(file){
   var ext = file.name.substring(file.name.lastIndexOf('.')+1);
@@ -698,8 +702,9 @@ function uploadNoneDocumentFile(file){
   //if there isn't then tell them to link one, if there is then just ask for the upload instruction
   //var group = checkFileGrouping(file);//returns group, and highest applicable storage providers
   var instructions = getUploadInstructions(file, function(instructions){
-    var schedule_data = instructions.schedule_data;
-    if(schedule_data.status!='impossible'){
+    
+    if(instructions.status!='impossible'){
+      var schedule_data = instructions.schedule_data;
       if(instructions.status == 'need_shuffle'){//tell the user how much data will need to be moved and ask whether they want to shuffle or not
         var msg = '帳號沒有足夠的空間，必須要先進行資料挪移，完成挪移後才能上傳此檔案:\n'
           +'總共需要移動: '+humanReadableBytes(schedule_data.shuffle.total_shuffle_size)+' 的資料\n'
@@ -718,6 +723,7 @@ function uploadNoneDocumentFile(file){
       };
       executor.execute();
     }else{
+      endWaitingAnimation();
       var decision = showNoSuitableAccountDialog(instructions.errorMessage);
       if(decision){
         window.location.href = '../../pages/view/manageaccount';
@@ -975,7 +981,6 @@ function renderFileSystem(){
   }
   //console.log(sel_vfile_id_map);
   var zNodes = constructZTree(treedata, prevOpenedDirIds, selectedNodes);
-  console.log(zNodes);
   var setting = {
     edit: {
       enable: true,
@@ -1343,7 +1348,9 @@ $(document).ready(function(){
       resetFilenameDialog();
     }
   });
-  $('#filesharepanel').dialog({title:'設定共享權限', height:'auto', width:'auto', autoOpen:false});
+  $('#filesharepanel').dialog({title:'設定共享權限', height:'auto', width:'auto', autoOpen:false, modal:true});
+  //$( ".selector" ).on( "dialogopen", function( event, ui ) {} );
+  
   $('#fileuploadpanel').dialog({title:'檔案上傳', height:'auto', width:'auto', autoOpen:false});
   $('#documenthostingdialog').dialog({title:'選擇檔案轉換類型', height:'auto', width:'auto', autoOpen:false});
   $('html').mouseup(function(){

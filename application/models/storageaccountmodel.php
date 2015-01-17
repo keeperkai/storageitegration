@@ -8,6 +8,8 @@ class StorageAccountModel extends CI_Model
 		//$this->load->model('googledrivemodel', 'googleDriveModel');
 		//$this->load->model('onedrivemodel', 'oneDriveModel');
 		$this->load->model('cloudstoragemodel', 'cloudStorageModel');//die
+        $this->load->helper('thread');
+        $this->load->helper('array');
     }
 	public function getApiSingleFileLimit($provider){
 		$info = $this->config->item('provider_info');
@@ -15,16 +17,26 @@ class StorageAccountModel extends CI_Model
 	}
 	public function getQuotaInfo($account_info){
 		return $this->cloudStorageModel->getAccountQuotaInfo($account_info);
-		/*
-		if($account_info['token_type'] == 'googledrive'){
-			return $this->googleDriveModel->getAccountQuotaInfo($account_info);
-		}else if($account_info['token_type'] == 'onedrive'){
-			return $this->oneDriveModel->getAccountQuotaInfo($account_info);
-		}else if($account_info['token_type'] == 'dropbox'){
-		
-		}
-		*/
 	}
+    /*
+        will use multi-threading to get all the accounts info in separate threads
+    */
+    public function getQuotaInfoBatch($account_info_array){
+        $thread_pool = array();
+        foreach($account_info_array as $acc){
+            $th = new GenericThread($this, "getQuotaInfo", array($acc));
+            $th->start();
+            $thread_pool[]=$th;
+        }
+        foreach($thread_pool as $th){
+            $th->join();
+        }
+        //all threads finished
+        $output = array();
+        foreach($thread_pool as $th){
+            $output[]=$th->getReturnValue();
+        }
+    }
 	public function setAccessTokenDataForClient($storage_account_data){
 		$storage_account_data['access_token'] = $this->cloudStorageModel->getAccessTokenForClient($storage_account_data);
 		/*
@@ -65,9 +77,15 @@ class StorageAccountModel extends CI_Model
         //this will force the scheduler to schedule an api copy to the 1st account and then chunk 10mb of the powerlinedouble.zip file.
         //the rest of the powerlinedouble.zip file will be transferred to the 3rd account
         $accounts = $this->getStorageAccounts($user);
+        
+        $accounts[0]['quota_info'] = array('total'=>15*1024*1024*1024, 'free'=>41178185+20*1024*1024, 'used'=>15*1024*1024*1024-(41178185+20*1024*1024));
+        $accounts[1]['quota_info'] = array('total'=>15*1024*1024*1024, 'free'=>0, 'used'=>15*1024*1024*1024);
+        $accounts[2]['quota_info'] = array('total'=>15*1024*1024*1024, 'free'=>82356474-20*1024*1024, 'used'=>15*1024*1024*1024-(82356474-20*1024*1024));
+        /*
         $accounts[0]['quota_info'] = array('total'=>15*1024*1024*1024, 'free'=>41178185+10*1024*1024, 'used'=>15*1024*1024*1024-(41178185+10*1024*1024));
         $accounts[1]['quota_info'] = array('total'=>15*1024*1024*1024, 'free'=>0, 'used'=>15*1024*1024*1024);
         $accounts[2]['quota_info'] = array('total'=>15*1024*1024*1024, 'free'=>82356474-10*1024*1024, 'used'=>15*1024*1024*1024-(82356474-10*1024*1024));
+        */
         foreach($accounts as $key=>$acc){
             $accounts[$key]['api_single_file_limit'] = $this->getApiSingleFileLimit($acc['token_type']);
 			$accounts[$key]['min_free_quota_single_file_limit'] = min($accounts[$key]['quota_info']['free'], $accounts[$key]['api_single_file_limit']);
@@ -181,7 +199,8 @@ class StorageAccountModel extends CI_Model
 		return $storage_account_data;
 	}
 	public function getSchedulingInfoForMultipleStorageAccounts($storage_account_arr){
-		$quota_info_map = array();
+		/*
+        $quota_info_map = array();
 		$output = array();
 		foreach($storage_account_arr as $k=>$acc){
 			if(array_key_exists($acc['storage_account_id'], $quota_info_map)){
@@ -195,6 +214,18 @@ class StorageAccountModel extends CI_Model
 			$output[]=$acc;
 		}
 		return $output;
+        */
+        $output = array();
+        $inde_storage_account_map = array_to_map("storage_account_id", $storage_account_arr);
+        $quota_infos = $this->getQuotaInfoBatch($inde_storage_account_map);
+        $idx = 0;
+        foreach($inde_storage_account_map as $acc){
+            $acc['quota_info'] = $quota_infos[$idx++];
+            $acc['api_single_file_limit'] = $this->getApiSingleFileLimit($acc['token_type']);
+			$acc['min_free_quota_single_file_limit'] = min($acc['quota_info']['free'], $acc['api_single_file_limit']);
+            $output []= $acc;
+        }
+        return $output;
 	}
 	public function getStorageAccountWithSchedulingInfo($user){
 		$accounts = $this->getStorageAccounts($user);

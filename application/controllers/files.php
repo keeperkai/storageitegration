@@ -164,6 +164,7 @@ class Files extends CI_Controller
 		$this->load->model('dispatchermodel','dispatcherModel');
 		
         $schedule_data = $this->schedulerModel->schedule($user, $name, $size, $extension);//0.04 secs
+        //var_dump($schedule_data);
         $upload_plan = $this->dispatcherModel->dispatch($schedule_data, $user);//this line
 		
         
