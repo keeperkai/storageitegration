@@ -58,6 +58,27 @@ class OneDriveModel extends CI_Model
 		}
 		return $access_token;
 	}
+    public function getAccountQuotaInfoAsyncRequest($storage_account){
+        $access_token = $this->getAccessToken($storage_account);
+        $ch = curl_init();
+        $curlConfig = array(
+            CURLOPT_URL            => 'https://apis.live.net/v5.0/me/skydrive/quota?access_token='.$access_token,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER =>array(
+                'Connection: close'
+            )
+        );
+        curl_setopt_array($ch, $curlConfig);
+        return $ch;
+    }
+    public function getAccountQuotaInfoAsyncYield($result){
+        $result = json_decode($result, true);
+		$total = $result['quota'];
+		$free = $result['available'];
+		$used = $total-$free;
+		$output = array('total'=>$total, 'used'=>$used, 'free'=>$free);
+		return $output;
+    }
 	public function getAccountQuotaInfo($storage_account){
 		//gets the quota info of an account
 		//output: array(

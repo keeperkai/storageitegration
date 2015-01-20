@@ -438,4 +438,14 @@ class Test extends CI_Controller
         header('Content-Type: text/plain');
         echo $output;
     }
+    public function testGetQuotaInfo(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $result=$this->storageAccountModel->getStorageAccountWithSchedulingInfo($user);
+        header('Content-Type: application/json');
+        echo json_encode($result);
+    }
 }

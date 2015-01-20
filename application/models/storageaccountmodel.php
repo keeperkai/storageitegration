@@ -7,8 +7,7 @@ class StorageAccountModel extends CI_Model
         parent::__construct();
 		//$this->load->model('googledrivemodel', 'googleDriveModel');
 		//$this->load->model('onedrivemodel', 'oneDriveModel');
-		$this->load->model('cloudstoragemodel', 'cloudStorageModel');//die
-        $this->load->helper('thread');
+		$this->load->model('cloudstoragemodel', 'cloudStorageModel');
         $this->load->helper('array');
     }
 	public function getApiSingleFileLimit($provider){
@@ -19,9 +18,10 @@ class StorageAccountModel extends CI_Model
 		return $this->cloudStorageModel->getAccountQuotaInfo($account_info);
 	}
     /*
-        will use multi-threading to get all the accounts info in separate threads
+        will use curl multi exec to do this in parallel
     */
     public function getQuotaInfoBatch($account_info_array){
+        /*
         $thread_pool = array();
         foreach($account_info_array as $acc){
             $th = new GenericThread($this, "getQuotaInfo", array($acc));
@@ -36,6 +36,27 @@ class StorageAccountModel extends CI_Model
         foreach($thread_pool as $th){
             $output[]=$th->getReturnValue();
         }
+        */
+        $mh = curl_multi_init();
+        foreach($account_info_array as $k=>$acc){
+            $ch = $this->cloudStorageModel->getAccountQuotaInfoAsyncRequest($acc);
+            $account_info_array[$k]['handle'] = $ch;
+            curl_multi_add_handle($mh,$ch);
+        }
+        //execute all requests
+        do {
+            curl_multi_exec($mh, $running);
+            curl_multi_select($mh);
+        } while ($running > 0);
+        //get results
+        foreach($account_info_array as $k=>$acc){
+            $result = curl_multi_getcontent($acc['handle']);
+            $account_info_array[$k]['quota_info'] = $this->cloudStorageModel->getAccountQuotaInfoAsyncYield($acc, $result);
+            curl_multi_remove_handle($mh, $acc['handle']);
+            unset($account_info_array[$k]['handle']);
+        }
+        curl_multi_close($mh);
+        return $account_info_array;
     }
 	public function setAccessTokenDataForClient($storage_account_data){
 		$storage_account_data['access_token'] = $this->cloudStorageModel->getAccessTokenForClient($storage_account_data);
@@ -200,6 +221,7 @@ class StorageAccountModel extends CI_Model
 	}
 	public function getSchedulingInfoForMultipleStorageAccounts($storage_account_arr){
 		/*
+        //sequential
         $quota_info_map = array();
 		$output = array();
 		foreach($storage_account_arr as $k=>$acc){
@@ -215,18 +237,19 @@ class StorageAccountModel extends CI_Model
 		}
 		return $output;
         */
+        //async version
         $output = array();
         $inde_storage_account_map = array_to_map("storage_account_id", $storage_account_arr);
-        $quota_infos = $this->getQuotaInfoBatch($inde_storage_account_map);
+        $accounts_with_info = $this->getQuotaInfoBatch($inde_storage_account_map);
         $idx = 0;
-        foreach($inde_storage_account_map as $acc){
-            $acc['quota_info'] = $quota_infos[$idx++];
+        foreach($accounts_with_info as $k=>$acc){
             $acc['api_single_file_limit'] = $this->getApiSingleFileLimit($acc['token_type']);
 			$acc['min_free_quota_single_file_limit'] = min($acc['quota_info']['free'], $acc['api_single_file_limit']);
             $output []= $acc;
         }
         return $output;
-	}
+        
+    }
 	public function getStorageAccountWithSchedulingInfo($user){
 		$accounts = $this->getStorageAccounts($user);
 		$accounts = $this->getSchedulingInfoForMultipleStorageAccounts($accounts);

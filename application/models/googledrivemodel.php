@@ -48,6 +48,29 @@ class GoogleDriveModel extends CI_Model
 		$drive = new Google_Service_drive($client);
 		return $drive;
 	}
+    //returns a curl handle
+    public function getAccountQuotaInfoAsyncRequest($storage_account){
+        //GET https://www.googleapis.com/drive/v2/about
+        $ch = curl_init();
+        $curlConfig = array(
+            CURLOPT_URL            => "https://www.googleapis.com/drive/v2/about",
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER =>array(
+                'Authorization: Bearer '.$this->getAccessTokenForClient($storage_account),
+                'Connection: close'
+            )
+        );
+        curl_setopt_array($ch, $curlConfig);
+        return $ch;
+    }
+    public function getAccountQuotaInfoAsyncYield($result){
+        $result = json_decode($result, true);
+        $total = $result['quotaBytesTotal'];
+		$used = $result['quotaBytesUsed'];
+		$free = $total-$used;
+		$output = array('total'=>$total, 'used'=>$used, 'free'=>$free);
+		return $output;
+    }
 	public function getAccountQuotaInfo($storage_account){
 		//gets the quota info of an account
 		//output: array(

@@ -22,6 +22,14 @@ class CloudStorageModel extends CI_Model
         }
         return false;
 	}
+    public function getAccountQuotaInfoAsyncRequest($storage_account){
+        $cs_model = $this->getCloudStorageModel($storage_account['token_type']);
+		return $cs_model->getAccountQuotaInfoAsyncRequest($storage_account);
+    }
+    public function getAccountQuotaInfoAsyncYield($storage_account, $result){
+        $cs_model = $this->getCloudStorageModel($storage_account['token_type']);
+        return $cs_model->getAccountQuotaInfoAsyncYield($result);
+    }
     public function getAccountQuotaInfo($storage_account){
 	    //gets the quota info of an account
 	    //output: array(
