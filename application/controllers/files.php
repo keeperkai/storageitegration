@@ -13,6 +13,141 @@ class Files extends CI_Controller
         
     }
 	//test section------------------------------------------------------------------------------
+    public function getUploadInstructionsWithPreparedAccountAndForcedShuffleRatio(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $mime = $this->input->post('mime');
+		$size = $this->input->post('size');
+		$extension = $this->input->post('extension');
+		$name = $this->input->post('name');
+        $ratio = $this->input->post('ratio');
+        $prepared_storage_account_id = $this->input->post('prepared_storage_account_id');
+		//this function will schedule and decide how the data will be moved to fit this file, and where the file should be uploaded to
+		//if it is just an upload without shuffle, the user agent should just upload according to the instructions
+		//if it involves shuffling, then the user agent should prompt and ask there is ? bytes that need to be shuffled for this file, are you willing to
+		//wait? if so, notify the server to start running move jobs for the server,then execute the instructions for the client side, once the user agent
+		//finishes a job, it notifies the server for file registration and delete of old storage data
+		
+        //ini_set('max_execution_time', 0);
+		$this->load->model('testshuffleschedulermodel','testShuffleSchedulerModel');
+		$this->load->model('dispatchermodel','dispatcherModel');
+		
+        $schedule_data = $this->testShuffleSchedulerModel->schedule($user, $name, $size, $extension, $prepared_storage_account_id, $ratio);
+        $info_time = $schedule_data['account_schedule_info_time']*1000;
+        //var_dump($schedule_data);
+        $upload_plan = $this->dispatcherModel->dispatch($schedule_data, $user);
+        $upload_plan['account_schedule_info_time'] = $info_time;
+		
+        
+        header('Content-Type: application/json');
+		echo json_encode($upload_plan);
+        
+		
+    }
+    public function uploadAndRegister($user, $file_path, $name, $storage_account){
+        $fileData = array();
+		$fileData['account'] = $user;
+		$fileData['file_type'] = 'file';
+        $fileData['mime_type'] = 'application/octet-stream';
+		$fileData['name'] = $name;
+		$fileData['extension'] = 'dummy';
+		$fileData['parent_virtual_file_id'] = -1;
+		$fileData['allow_chunk'] = true;
+        $this->fileModel->registerFile($fileData);
+        //upload the file and setup storage data
+        $file_size = filesize($file_path);
+        $file = fopen($file_path, 'r');
+        $storage_id = $this->cloudStorageModel->uploadFile($storage_account, $name, 'application/octet-stream', $file_size, $file);
+        $storage_file_data = array(
+            array(
+                'storage_account_id'=>$storage_account['storage_account_id'],
+                'storage_file_type'=>'file',
+                'byte_offset_start'=>0,
+                'byte_offset_end'=>$file_size - 1,
+                'storage_file_size'=>$file_size,
+                'storage_id'=>$storage_id
+            )
+        );
+        $insertedfile = $this->fileModel->findLatestVirtualFileWithProperties($fileData);
+        $virtual_file_id = $insertedfile['virtual_file_id'];
+        //add permission for the owner
+        $this->fileModel->addPermission($virtual_file_id, $user, 'owner');
+        //inherit permissions from parent
+        $this->fileModel->inheritParentPermission($virtual_file_id);
+        if($fileData['file_type']!='folder'){
+            //foreach storage file, register them and propagate the permissions to storage if needed
+            foreach($storage_file_data as $sfile){
+               $sfile['virtual_file_id'] = $virtual_file_id;
+               //$this->fileModel->registerStorageFile($sfile);
+               $this->fileModel->registerStorageFileAndSetPermissionsOnStorage($sfile);//no need to set permissions just to shuffle files
+            }
+        }
+    }
+    /*
+        prepare an account to be the source account for shuffle testing, there should be 1GB of  real file data in the account
+        to shuffle, other accounts will have portions of the target quota,
+        will return 1 storage_account_id as the source account.
+        we will give the storage account id to the scheduler when it gets it's scheduling info. so the fake schedule info generator
+        will give the other accounts the right amount of free quota and the source account 0 quota.
+    */
+    public function prepareShuffleAccounts(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        
+        $provider = $this->input->post('provider');
+        
+        $accounts = $this->storageAccountModel->getStorageAccounts($user);
+        
+        //find one account on the provider
+        $picked_acc = array();
+        $found = false;
+        foreach($accounts as $acc){
+            if($acc['token_type'] == $provider){
+                $picked_acc = $acc;
+                $found = true;
+                break;
+            }
+        }
+        if(!$found) return false;
+        $dummy_file_paths = $this->config->item('dummy_file_paths');
+        //upload & register files to the account
+        $this->uploadAndRegister($user, $dummy_file_paths['5M'], '5M.dummy', $picked_acc);
+        $this->uploadAndRegister($user, $dummy_file_paths['5M'], '5M.dummy', $picked_acc);
+        $this->uploadAndRegister($user, $dummy_file_paths['5M'], '5M.dummy', $picked_acc);
+        $this->uploadAndRegister($user, $dummy_file_paths['5M'], '5M.dummy', $picked_acc);
+        
+        $this->uploadAndRegister($user, $dummy_file_paths['10M'], '10M.dummy', $picked_acc);
+        $this->uploadAndRegister($user, $dummy_file_paths['10M'], '10M.dummy', $picked_acc);
+        
+        $this->uploadAndRegister($user, $dummy_file_paths['20M'], '20M.dummy', $picked_acc);
+        $this->uploadAndRegister($user, $dummy_file_paths['20M'], '20M.dummy', $picked_acc);
+        
+        $this->uploadAndRegister($user, $dummy_file_paths['40M'], '40M.dummy', $picked_acc);
+        
+        $this->uploadAndRegister($user, $dummy_file_paths['80M'], '80M.dummy', $picked_acc);
+        
+        header('Content-Type: application/json');
+        echo json_encode(array('storage_account_id'=> $picked_acc['storage_account_id']));
+    }
+    public function deleteAllFilesOnSystem(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        
+        //delete all the permission/virtual file/storage file data that is owned by this user
+        $vfiles = $this->fileModel->getVirtualFileTreeForUser($user);
+        foreach($vfiles as $virtual_file){
+            $this->fileModel->deleteFileWithUserContext($virtual_file['virtual_file_id'], $user);
+        }
+    }
     /*
         this function purges all the virtual files/storage files/storage files on cloud storages
         Note that this doesn't purge the priority settings of the files and the accounts linked will still be intact.
@@ -164,8 +299,10 @@ class Files extends CI_Controller
 		$this->load->model('dispatchermodel','dispatcherModel');
 		
         $schedule_data = $this->schedulerModel->schedule($user, $name, $size, $extension);//0.04 secs
+        $info_time = $schedule_data['account_schedule_info_time']*1000;
         //var_dump($schedule_data);
         $upload_plan = $this->dispatcherModel->dispatch($schedule_data, $user);//this line
+        $upload_plan['account_schedule_info_time'] = $info_time;
 		
         
         header('Content-Type: application/json');
@@ -218,6 +355,7 @@ class Files extends CI_Controller
                 storage_file_type
                 byte_offset_start
                 byte_offset_end
+                storage_file_size
                 storage_id
             )
         )
@@ -238,7 +376,7 @@ class Files extends CI_Controller
 			if($fileData['file_type']!='folder'){
 				//foreach storage file, register them and propagate the permissions to storage if needed
                 foreach($storage_file_data as $sfile){
-                    $sfile['virtual_file_id'] = $virtual_file_id;
+                   $sfile['virtual_file_id'] = $virtual_file_id;
                    $this->fileModel->registerStorageFileAndSetPermissionsOnStorage($sfile);
                 }
             }

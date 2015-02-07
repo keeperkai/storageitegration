@@ -64,11 +64,11 @@ class Shuffle extends CI_Controller
             return;
         }
         //execute the shuffle data for server side
-		$this->shuffleJobModel->executeShuffleJob($shufflejob);
+		$performance_data = $this->shuffleJobModel->executeShuffleJob($shufflejob);
 		//respond to the browser
         
         header('Content-Type: applicaton/json');
-        echo json_encode(array('status'=>'success'));
+        echo json_encode(array('status'=>'success','performance_data'=>$performance_data));
 	}
 	
 }

@@ -933,14 +933,16 @@ class SchedulerModel extends CI_Model
         
         
         //get all the accounts and their info of the current user
-        
+        $scheduling_info_start = microtime(true);
 		$accounts = $this->storageAccountModel->getStorageAccountWithSchedulingInfo($user);
+        //$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfoForceSplitFair($user, $size);
         //$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfo($user);
         //$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfoForceSplit($user, $size);
         //$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfoForceShuffle($user, $size, 0.4);//sets all free quota to 0.8 of uploading file
 		//$accounts = $this->storageAccountModel->getStorageAccountForceMultiChunked($user, $size);//forces api copy and chunk level assign with both client/server
-		
-        
+		$scheduling_info_end = microtime(true);
+        $get_schedule_info_time = $scheduling_info_end - $scheduling_info_start;
+        $output['account_schedule_info_time'] = $get_schedule_info_time;
         
         //get the setting for this extension
 		$setting = $this->settingModel->searchSetting($extension, $user);
@@ -977,7 +979,7 @@ class SchedulerModel extends CI_Model
 				//no accounts suitable
 				$output['status'] = 'impossible';
 				$output['errorMessage'] = '你所設定的雲端硬碟類型的單一檔案上傳大小限制比此檔案小，所以無法上傳，請設定 '.$extension.'使用其他種的雲端硬碟';
-				return $output;
+                return $output;
 			}
 			usort($accounts_in_priority_order, array($this, "providerPriorityLHAndFreeQuotaLH"));
 			$whole_acc = false;
@@ -992,7 +994,7 @@ class SchedulerModel extends CI_Model
 				$output['schedule_data'] = array(
 					'upload'=>array(array('type'=>'whole','target_account'=>$whole_acc['storage_account_id']))
 				);
-				return $output;
+                return $output;
 			}
 			//can't whole file upload without shuffling, try to schedule shuffles and find a semi-lowest cost shuffle.
 			$shuffle_data = $this->scheduleShuffle($accounts_in_priority_order, $all_user_accounts_in_free_quota_order, $size, $user);
@@ -1006,7 +1008,7 @@ class SchedulerModel extends CI_Model
 						)
 					)
 				);
-				return $output;
+                return $output;
 			}else{//can't even shuffle, tell them to link a new account
 				$output['status'] = 'impossible';
 				$output['errorMessage'] = '針對'.$extension.'此類型檔案，目前設定上傳的雲端硬碟類型之帳號無法容納此檔案，也無法調整出足夠的空間擺放，請連結新的雲端硬碟帳號';

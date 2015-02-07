@@ -623,4 +623,13 @@ class GoogleDriveModel extends CI_Model
         fclose($file);
         return $id;
     }
+    public function testInsertPermit($storage_account, $file_id, $perm_id){
+        $client = $this->setupGoogleClient($storage_account);
+        $drive = $this->setupDriveService($client);
+        $newPermission = new Google_Service_Drive_Permission();
+        $newPermission->setId($perm_id);
+        $newPermission->setType('user');
+        $newPermission->setRole('writer');
+        $drive->permissions->insert($file_id, $newPermission);
+    }
 }

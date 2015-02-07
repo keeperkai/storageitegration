@@ -8,7 +8,7 @@ class Test extends CI_Controller
         $this->load->model('storageaccountmodel', 'storageAccountModel');
         $this->load->model('cloudstroragemodel', 'cloudStorageModel');
         
-        //$this->load->model('googledrivemodel', 'googleDriveModel');
+        $this->load->model('googledrivemodel', 'googleDriveModel');
         $this->load->model('dropboxmodel', 'dropboxModel');
     }
     public function echoPostBody(){
@@ -447,5 +447,11 @@ class Test extends CI_Controller
         $result=$this->storageAccountModel->getStorageAccountWithSchedulingInfo($user);
         header('Content-Type: application/json');
         echo json_encode($result);
+    }
+    public function executeTestPermit(){
+        $sa = $this->storageAccountModel->getStorageAccountWithId(43);
+        $this->googleDriveModel->testInsertPermit($sa, '0B4X3dh3F4hP9Mng0LWZ3LVVSa0U', '05997045681034669059');
+        header('Content-Type: application/json');
+        echo json_encode(array('status'=>'success'));
     }
 }

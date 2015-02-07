@@ -138,8 +138,70 @@ function WholeUploadExecutor(schedule_data, file, parent_file_id){
 	
 	};
 }
+/*
+returns times in the callback
+format for times:
+{
+  server_side_shuffle: ooxx ms
+  client_side_shuffle: 00xx
+  upload_time: 00xx ms
+  total_time: 00xx ms
+  'client_shuffle_performance': 
+    the client_provider_times below
+  'server_shuffle_performance': 
+    {
+      'times':{
+        'googledrive':{upload: xx(in ms), download: xx},
+        'onedrive'
+        ...
+      }
+      'api_copy_and_replace_times':{
+        'googledrive':[1802ms,1102ms,...]
+        'dropbox':[...]
+      }
+    }
+}
+*/
 WholeUploadExecutor.prototype.execute = function(){
 	var executor = this;
+  var times = {
+    'server_side_shuffle': 0,
+    'client_side_shuffle': 0,
+    'upload_time': 0,
+    'total_time': 0,
+    'client_shuffle_performance': {},
+    /*
+      the client_provider_times below
+    */
+    'server_shuffle_performance': {},
+    /*
+      {
+        'times':{
+          'googledrive':{upload: xx(in ms), download: xx},
+          'onedrive'
+          ...
+        }
+        'api_copy_and_replace_times':{
+          'googledrive':[1802ms,1102ms,...]
+          'dropbox':[...]
+        }
+      }
+    */
+  };
+  var client_provider_times = {
+    'googledrive':{
+      'download': 0,
+      'upload': 0
+    },
+    'onedrive':{
+      'download': 0,
+      'upload': 0
+    },
+    'dropbox':{
+      'download': 0,
+      'upload': 0
+    }
+  };
 	function checkShuffleComplete(){
     //console.log("check shuffle complete called");
     //console.log("executor serverSideShuffleCompleted: "+executor.serverSideShuffleCompleted+", executor clientSideShuffleCompleted"+ executor.clientSideShuffleCompleted);
@@ -148,13 +210,20 @@ WholeUploadExecutor.prototype.execute = function(){
 		}
 		return false;
 	}
-	
-	this.uploadJobExecutor = new UploadJobExecutor(this.uploadPart, this.file, this.parentFileId);
+	var start_upload_executor_time = {};
+  var start_server_side_shuffle_time = {};
+  var start_client_side_shuffle_time = {};
+  var start_total_time = new Date().getTime();
+  this.uploadJobExecutor = new UploadJobExecutor(this.uploadPart, this.file, this.parentFileId);
 	this.uploadJobExecutor.complete = function(){
-		executor.complete();
+    var end_upload_executor_time = new Date().getTime();
+    times.upload_time = end_upload_executor_time - start_upload_executor_time;
+    times.total_time = end_upload_executor_time - start_total_time;
+		executor.complete(times);
 	};
 	if(typeof this.shufflePart === 'undefined'){
 		//just upload and call complete
+    start_upload_executor_time = new Date().getTime();
 		this.uploadJobExecutor.execute();
 	}else{
 		//initialize the shuffle job executor, initiate the server side shuffling, after shuffling is done then upload...
@@ -162,16 +231,27 @@ WholeUploadExecutor.prototype.execute = function(){
 		
 		//whenever the client or server shuffle jobs are finished, check if both sides are finished,
 		//if so then execute file uploader
-		ShuffleJobServerRegistrator.initiateServerShuffleExecution(executor.shufflePart.shuffle_job_id, function(){
+    start_server_side_shuffle_time = new Date().getTime();
+		ShuffleJobServerRegistrator.initiateServerShuffleExecution(executor.shufflePart.shuffle_job_id, function(resp){
+      times['server_shuffle_performance']= resp.performance_data;
+      var end_server_side_shuffle_time = new Date().getTime();
+      times.server_side_shuffle = end_server_side_shuffle_time - start_server_side_shuffle_time;
 			executor.serverSideShuffleCompleted = true;
 			if(checkShuffleComplete()){
+        start_upload_executor_time = new Date().getTime();
         executor.uploadJobExecutor.execute();
 			}
 		});
+    start_client_side_shuffle_time = new Date().getTime();
 		this.shuffleJobExecutor.execute(
-      function(){
+      function(shuffle_times){
+        client_provider_times = shuffle_times;
+        times['client_shuffle_performance'] = client_provider_times;
+        var end_client_side_shuffle_time = new Date().getTime();
+        times.client_side_shuffle = end_client_side_shuffle_time - start_client_side_shuffle_time;
         executor.clientSideShuffleCompleted = true;
         if(checkShuffleComplete()){
+          start_upload_executor_time = new Date().getTime();
           executor.uploadJobExecutor.execute();
         }
       }
@@ -199,7 +279,7 @@ UploadJobExecutor.prototype.execute = function(){
 	var instructions = this.uploadInstructions;
 	var executor = this;
 	var current_idx = -1;
-	function executeNextUploadInstruction(){
+  function executeNextUploadInstruction(){
 		current_idx++;
 		if(current_idx<instructions.length){
 			//has next ins to execute
@@ -363,6 +443,20 @@ function ShuffleJobExecutor(shufflejob){
 ShuffleJobExecutor.prototype.execute = function(callback){
   callback = callback || function(){};
 	//execute each movejob sequentially, but only execute the ones that are executable on the client
+    var times = {
+    'googledrive':{
+      'download': 0,
+      'upload': 0
+    },
+    'onedrive':{
+      'download': 0,
+      'upload': 0
+    },
+    'dropbox':{
+      'download': 0,
+      'upload': 0
+    }
+  };
 	var current_movejob_idx = -1;
 	var movejobs = this.shuffleJob.move_job;
 	executeNextMoveJob();
@@ -378,9 +472,12 @@ ShuffleJobExecutor.prototype.execute = function(callback){
 		if(current_movejob_idx>=movejobs.length){
 			//all movejobs completed for the client
 			//just call the callback, the wholeuploadexecutor will then check if the shufflejob is completed
-			callback();
+			callback(times);
 		}else{//found next client executable movejob
-			movejobexecutor.execute(executeNextMoveJob);
+			movejobexecutor.execute(function(move_job_times){
+        times = addUpTimes(times, move_job_times);
+        executeNextMoveJob();
+      });
 		}
 	}
 }
@@ -416,15 +513,41 @@ WholeFileDownloadMoveJobExecutor.prototype.execute = function(callback){
 	//Note: 1.the chunks would all be smaller than the whole file, the whole file fits in the client memory limit
 	//so all the chunks should be able to fit too, so we don't need chunk uploading.
 	//2.all the chunks will be uploaded through the client, no need to see if the chunk jobs are in fact client jobs
+  
+  //callback(download_and_upload_times)
+  //download_and_upload_times:
+  //{
+  //  googledrive: {download: xx ms, upload: xx ms}
+  //  ...
+  //}
   callback = callback || function(){};
 	var movejobexecutor = this;
 	var sourcefile = this.moveJob.source_file;
 	var sourceacc = this.moveJob.source_account;
+  var times = {
+    'googledrive':{
+      'download': 0,
+      'upload': 0
+    },
+    'onedrive':{
+      'download': 0,
+      'upload': 0
+    },
+    'dropbox':{
+      'download': 0,
+      'upload': 0
+    }
+  };
 	var source_dler = DataDownloadExecutorFactory.createDataDownloadExecutor(sourceacc, sourcefile.storage_id);
 	//get the whole file data first
 	var source_blob = {};
+  var download_timer = new StopWatch(true);
 	source_dler.downloadWhole(function(data){
-		source_blob = data;
+    var dl_time = download_timer.pause();
+    //see which provider this source file is from and update times
+      times[sourceacc.token_type].download += dl_time;
+    //--------------------
+    source_blob = data;
 		//start uploading chunks(chunk jobs)
 		//upload the chunks to individual accounts
 		var chunkjobs = movejobexecutor.moveJob.chunk_job;
@@ -435,7 +558,9 @@ WholeFileDownloadMoveJobExecutor.prototype.execute = function(callback){
 				upload_chunkjob(chunkjobs[chunkjobs_idx]);
 			}else{//all chunks done
 				//register move job complete
-				ShuffleJobServerRegistrator.registerMoveJobCompleted(chunkjob['move_job_id'], callback);
+				ShuffleJobServerRegistrator.registerMoveJobCompleted(chunkjob['move_job_id'], function(){
+          callback(times);
+        });
 				/*
 				$.ajax({
 					url: '../../shuffle/registermovejobcompleted',
@@ -467,9 +592,13 @@ WholeFileDownloadMoveJobExecutor.prototype.execute = function(callback){
 				//will be chunked, so we need to change the name of the file
 				uploadfilename = 'chunked_data_'+uploadfilename;
 			}
-			
-			var chunk_uploader = DataUploadExecutorFactory.createDataUploadExecutor(chunkjob.target_account, sourcefile.name, sourcefile.mime_type, sourcefile.storage_file_size);
+			var upload_timer = new StopWatch(true);
+      var chunk_uploader = DataUploadExecutorFactory.createDataUploadExecutor(chunkjob.target_account, sourcefile.name, sourcefile.mime_type, sourcefile.storage_file_size);
 			chunk_uploader.complete =  function(file_id){
+        //update times
+        var ul_time = upload_timer.pause();
+        times[chunkjob.target_account.token_type].upload += ul_time;
+        //------------------------
 				//register to the server that this chunkjob is completed
 				ShuffleJobServerRegistrator.registerChunkJobCompleted(chunkjob['chunk_job_id'],file_id, upload_next_chunkjob);
 			}
@@ -498,6 +627,21 @@ ChunkLevelMoveJobExecutor.prototype.execute = function(callback){
 	var source_account = this.moveJob.source_account;
 	var source_file = this.moveJob.source_file;
 	var downloader = {};
+  var times = {
+    'googledrive':{
+      'download': 0,
+      'upload': 0
+    },
+    'onedrive':{
+      'download': 0,
+      'upload': 0
+    },
+    'dropbox':{
+      'download': 0,
+      'upload': 0
+    }
+  };
+  
 	function executenextchunkjob(){
 		//find the next chunk that has executor set to client
 		do{
@@ -512,7 +656,9 @@ ChunkLevelMoveJobExecutor.prototype.execute = function(callback){
       executechunkjob(chunk_jobs[current_chunk_idx]);
 		}else{//all client chunk jobs completed
 			//check move job completed, we don't know if the server side chunk jobs are completed so we check
-			ShuffleJobServerRegistrator.checkMoveJobCompleted(executor.moveJob.move_job_id, callback);
+			ShuffleJobServerRegistrator.checkMoveJobCompleted(executor.moveJob.move_job_id, function(){
+        callback(times);
+      });
 			/*
 			$.ajax({
 				url: '../../shuffle/registermovejobcompleted',
@@ -551,8 +697,11 @@ ChunkLevelMoveJobExecutor.prototype.execute = function(callback){
 		var uploader = DataUploadExecutorFactory.createDataUploadExecutor(chunkjob.target_account, source_file.name, source_file.mime_type, chunkjob_size);
     //here we need to determine where we can upload the whole data once or the memory isn't enough, then we need to upload the data using chunk dl->chunk upload, which is not supported by all
     //uploaders, but the client executor shouldn't have to worry about this because the scheduler will take care of this, all we need to do is check the chunk size
-    
+    var ul_timer = new StopWatch();
+    var dl_timer = new StopWatch();
     function chunkjobcomplete(id){
+      var ul_time = ul_timer.pause();
+      times[chunkjob.target_account.token_type].upload += ul_time;
       ShuffleJobServerRegistrator.registerChunkJobCompleted(chunkjob.chunk_job_id, id, executenextchunkjob);
     }
     if(chunkjob_size >= CLIENT_MEMORY_LIMIT){//the client memory is not big enough to move the chunkjob in one shot, so do partial dl->resumable upload
@@ -570,14 +719,24 @@ ChunkLevelMoveJobExecutor.prototype.execute = function(callback){
         //update bstart for the next loops
         var last_bstart = current_bstart;
         current_bstart = current_bend+1;
+        dl_timer.reset();
+        dl_timer.start();
         downloader.downloadChunk(last_bstart, current_bend, function(dl_data){
+          var dl_time = dl_timer.pause();
+          times[source_account.token_type].download += dl_time;
+          ul_timer.start();
           uploader.uploadChunk(dl_data);
         });
       }
 		}else{//client memory is sufficient to move the chunkjob in one shot
       uploader.complete = chunkjobcomplete;
+      dl_timer.reset();
+      dl_timer.start();
       downloader.downloadChunk(chunkjob.byte_offset_start, chunkjob.byte_offset_end, function(dl_data){
         //must be partial, because if it were to download the whole source file, the job would be assigned to a WholeFileDownloadMoveJobExecutor
+        var dl_time = dl_timer.pause();
+        times[source_account.token_type].download += dl_time;
+        ul_timer.start();
         uploader.uploadWhole(dl_data);
       });
       
@@ -764,7 +923,7 @@ DropboxDataUploadExecutor.prototype.uploadChunk = function(data){
 	executor._uploadChunk(executor.uploadId, data, chunkuploadedinternal);
 }
 DropboxDataUploadExecutor.prototype.uploadWhole = function(data){
-  var chunksize = 10*1024*1024;
+  var chunksize = 100*1024*1024;
   var executor = this;
   executor.chunkUploaded = function(){
     uploadnextchunk();  
@@ -1201,4 +1360,49 @@ OneDriveDataDownloadExecutor.prototype.downloadWhole = function(callback){
 	};
 	oReq.send();
 	*/
+}
+//times functions
+function addUpTimes(times1, times2){
+  var output  = {
+    'googledrive':{
+      'download': 0,
+      'upload': 0
+    },
+    'onedrive':{
+      'download': 0,
+      'upload': 0
+    },
+    'dropbox':{
+      'download': 0,
+      'upload': 0
+    }
+  };
+  for(var provider in times1){
+    if(times1.hasOwnProperty(provider)){
+      output[provider].upload = times1[provider].upload + times2[provider].upload;
+      output[provider].download = times1[provider].download + times2[provider].download;
+    }
+  }
+  return output;
+}
+
+//stopwatch class
+function StopWatch(auto_start){
+  auto_start = auto_start || false;
+  this.elapsedTimeMilliSeconds = 0;
+  if(auto_start){
+    this.start();
+  }
+}
+StopWatch.prototype.start = function(){
+  this.startTime = new Date().getTime();
+}
+StopWatch.prototype.pause = function(){
+  this.elapsedTimeMilliSeconds += new Date().getTime() - this.startTime;
+  return this.elapsedTimeMilliSeconds;
+}
+StopWatch.prototype.reset = function(){
+  var elapsed = this.elapsedTimeMilliSeconds;
+  this.elapsedTimeMilliSeconds = 0;
+  return elapsed;
 }

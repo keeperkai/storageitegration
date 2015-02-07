@@ -382,35 +382,7 @@ map for storage providers and their capabilities for each type of extension/othe
 */
 $config['provider_info'] = array(
     'googledrive'=>array(
-        'extension_capability_map'=>array(
-            'xls'=>'preview',
-            'xlsx'=>'preview',
-            'ppt'=>'preview',
-            'pptx'=>'preview',
-            'doc'=>'preview',
-            'docx'=>'preview',
-            'pdf'=>'preview',
-            'ods'=>'preview',
-            'odt'=>'preview',
-            'odp'=>'preview',
-            'jpg'=>'edit',
-            'png'=>'edit',
-            'bmp'=>'edit',
-            'tiff'=>'edit',
-            'psd'=>'edit',
-            'mp3'=>'preview',
-            'aiff'=>'preview',
-            'wav'=>'preview',
-            'wma'=>'preview',
-            'bun'=>'preview',
-            'mp4'=>'preview',
-            'mov'=>'preview',
-            'avi'=>'preview',
-            'wmv'=>'preview',
-            'flv'=>'preview',
-            'mts'=>'preview'
-        ),
-		'api_single_file_limit'=>5497558138880,
+        'api_single_file_limit'=>5497558138880,
 		'copy_and_replace_support'=>true,
 		'cors_download_range_header_support'=>true,
 		'cors_download_support'=>true,
@@ -420,35 +392,7 @@ $config['provider_info'] = array(
         'need_account_for_edit'=>true
     ),
     'onedrive'=>array(
-        'extension_capability_map'=>array(
-            'xls'=>'edit',
-            'xlsx'=>'edit',
-            'ppt'=>'edit',
-            'pptx'=>'edit',
-            'doc'=>'edit',
-            'docx'=>'edit',
-            'pdf'=>'preview',
-            'ods'=>'edit',
-            'odt'=>'edit',
-            'odp'=>'edit',
-            'jpg'=>'preview',
-            'png'=>'preview',
-            'bmp'=>'preview',
-            'tiff'=>'preview',
-            'psd'=>'preview',
-            'mp3'=>'preview',
-            'aiff'=>'preview',
-            'wav'=>'preview',
-            'wma'=>'preview',
-            'bun'=>'preview',
-            'mp4'=>'preview',
-            'mov'=>'preview',
-            'avi'=>'preview',
-            'wmv'=>'preview',
-            'flv'=>'preview',
-            'mts'=>'preview'
-        ),
-		'api_single_file_limit'=>104857599,
+        'api_single_file_limit'=>104857599,
 		'copy_and_replace_support'=>false,
 		'cors_download_range_header_support'=>false,
 		'cors_download_support'=>false,
@@ -467,7 +411,6 @@ $config['provider_info'] = array(
         'need_account_for_preview'=>false,
         'need_account_for_edit'=>false
     )
-    
 );
 //$config['client_memory_limit'] = 100*1024*1024;//100mb, in bytes
 $config['client_memory_limit'] = 50*1024*1024;//50mb, in bytes
@@ -480,6 +423,15 @@ $config['spreadsheet_file_path'] = APPPATH.'document_templates/spreadsheet_templ
 $config['spreadsheet_file_mime'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 $config['presentation_file_path'] = APPPATH.'document_templates/presentation_template.pptx';
 $config['presentation_file_mime'] = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+
+$config['dummy_file_paths'] = array(
+    '5M'=>APPPATH.'dummy_files/5M.dummy',
+    '10M'=>APPPATH.'dummy_files/10M.dummy',
+    '20M'=>APPPATH.'dummy_files/20M.dummy',
+    '40M'=>APPPATH.'dummy_files/40M.dummy',
+    '80M'=>APPPATH.'dummy_files/80M.dummy',
+    '100M-1'=>APPPATH.'dummy_files/100Mminusone.dummy'
+);
 
 /* End of file config.php */
 /* Location: ./application/config/config.php */

@@ -173,32 +173,104 @@ class ShuffleJobModel extends CI_Model
     public function executeShuffleJob($shuffle_job_data){
         //var_dump('executing         ');
         //echo 'executing shuffle job: '.$shuffle_job_data['shuffle_job_id'];
+        $times = array(
+            'googledrive'=>array(
+                'upload'=>0,
+                'download'=>0
+            ),
+            'onedrive'=>array(
+                'upload'=>0,
+                'download'=>0
+            ),
+            'dropbox'=>array(
+                'upload'=>0,
+                'download'=>0
+            )
+        );
+        $api_call_times = array(
+            'googledrive'=>array(),
+            'onedrive'=>array(),
+            'dropbox'=>array()
+        );
         foreach($shuffle_job_data['move_job'] as $movejob){
-            $this->executeMoveJob($movejob);
+            $performance_data = $this->executeMoveJob($movejob);
+            //add the upload/download times
+            $times = $this->addProviderTimes($times, $performance_data['times']);
+            $api_call_times = $this->mergeApiCallTimes($api_call_times, $performance_data['api_copy_and_replace_times']);
         }
         //no need to check shuffle job completed here, since the client will do that for us.
+        //return the performance info
+        return array('times'=>$times, 'api_copy_and_replace_times'=>$api_call_times);
     }
+    /*
+        returns:
+        array('times'=>$times, 'api_copy_and_replace_times'=>$api_call_times);
+        just look at the first two variables
+    */
     public function executeMoveJob($movejob){
-        //echo 'executing move job: '.$movejob['move_job_id'];
-        
+        $times = array(
+            'googledrive'=>array(
+                'upload'=>0,
+                'download'=>0
+            ),
+            'onedrive'=>array(
+                'upload'=>0,
+                'download'=>0
+            ),
+            'dropbox'=>array(
+                'upload'=>0,
+                'download'=>0
+            )
+        );
+        $api_call_times = array(
+            'googledrive'=>array(),
+            'onedrive'=>array(),
+            'dropbox'=>array()
+            
+        );
         //for each type of move job, do something different
         //'download_whole_file_and_distribute_on_server','download_whole_file_and_distribute_on_client','api_copy_and_replace','chunk_level_assign'
         if($movejob['job_type'] == 'download_whole_file_and_distribute_on_server'){
-            $this->executeDownloadWholeMoveJob($movejob);
+            $provider_times = $this->executeDownloadWholeMoveJob($movejob);
+            $times = $this->addProviderTimes($times, $provider_times);
         }else if($movejob['job_type'] == 'api_copy_and_replace'){
+            $s = microtime(true)*1000;
             $this->executeApiCopyAndReplace($movejob);
+            $api_time = microtime(true)*1000 - $s;
+            $api_call_times [$movejob['source_account']['token_type']][] = $api_time;
         }else if($movejob['job_type'] == 'chunk_level_assign'){
-            $this->executeChunkLevelMoveJob($movejob);
+            $provider_times = $this->executeChunkLevelMoveJob($movejob);
+            //var_dump($times);
+            //var_dump($provider_times);
+            $times = $this->addProviderTimes($times, $provider_times);
+            //var_dump($times);
         }else{
             throw new Exception("job_type of move job is unrecognisable on server : "+$movejob['job_type']);
             return;
         }
+        return array('times'=>$times, 'api_copy_and_replace_times'=>$api_call_times);
         
     }
     public function executeDownloadWholeMoveJob($movejob){
+        $times = array(
+            'googledrive'=>array(
+                'upload'=>0,
+                'download'=>0
+            ),
+            'onedrive'=>array(
+                'upload'=>0,
+                'download'=>0
+            ),
+            'dropbox'=>array(
+                'upload'=>0,
+                'download'=>0
+            )
+        );
         $copysize = 1*1024*1024;//1MB for copying files into chunks
         //stream download file and stream upload to chunk targets
+        $s = microtime(true)*1000;
         $source_fp = $this->cloudStorageModel->downloadFile($movejob['source_account'], $movejob['source_file']);
+        $times[$movejob['source_account']['token_type']]['download'] += microtime(true)*1000 - $s;
         //upload each chunk
         foreach($movejob['chunk_job'] as $chunkjob){
             //setup upload chunk file
@@ -217,8 +289,9 @@ class ShuffleJobModel extends CI_Model
                 $current_offset += $len;
             }while($current_offset<=$end_offset);
             //upload the target file
+            $s2 = microtime(true)*1000;
             $storage_id = $this->cloudStorageModel->uploadFile($storage_account, $file_name, $file_mime, $file);
-            
+            $times[$chunkjob['target_account']['token_type']]['upload'] += microtime(true)*1000 - $s2;
             //register chunk job completed and update the uploaded storage id
             $this->registerChunkJobCompleted($chunk_job['chunk_job_id'], $storage_id);
             //close the target file
@@ -229,12 +302,23 @@ class ShuffleJobModel extends CI_Model
         $this->registerMoveJobCompleted($movejob['move_job_id']);
         //close source file
         fclose($source_fp);
-        
+        return $times;
     }
     public function executeChunkLevelMoveJob($movejob){
-        //echo 'executing chunk level job: ';
-        //$s = microtime(true);
-        
+        $times = array(
+            'googledrive'=>array(
+                'upload'=>0,
+                'download'=>0
+            ),
+            'onedrive'=>array(
+                'upload'=>0,
+                'download'=>0
+            ),
+            'dropbox'=>array(
+                'upload'=>0,
+                'download'=>0
+            )
+        );
         //for these kinds of jobs, the source account must support partial download.
         $source_account = $movejob['source_account'];
         $source_file = $movejob['source_file'];
@@ -250,7 +334,9 @@ class ShuffleJobModel extends CI_Model
                 $dl_count = 0;
                 while($dl_count<3){
                     $source=tmpfile();
+                    $s = microtime(true)*1000;
                     $this->cloudStorageModel->downloadChunk($source_account, $source_file['storage_id'], $start_offset, $end_offset, $source);
+                    $times[$movejob['source_account']['token_type']]['download'] += microtime(true)*1000 - $s;
                     //check if the downloaded chunk matches the size to see if download is success
                     fseek($source, 0, SEEK_END);
                     if(ftell($source)!=$size_of_chunk){
@@ -269,7 +355,9 @@ class ShuffleJobModel extends CI_Model
                 rewind($source);
                 //echo 'source downloaded, uploading file    ';
                 //upload the file as a new storage file
+                $s = microtime(true)*1000;
                 $storage_id = $this->cloudStorageModel->uploadFile($target_account, $source_file['name'], $source_file['mime_type'], $size_of_chunk, $source);
+                $times[$target_account['token_type']]['upload'] += microtime(true)*1000 - $s;
                 //echo 'uploaded    ';
                 //register chunk job completed
                 $this->registerChunkJobCompleted($chunkjob['chunk_job_id'], $storage_id);
@@ -279,9 +367,7 @@ class ShuffleJobModel extends CI_Model
         }
         //check move job completed
         $this->checkMoveJobCompleted($movejob['move_job_id']);
-        
-        //$t = microtime(true);
-        //echo 'time = '.($t-$s).PHP_EOL;
+        return $times;
     }
     public function executeApiCopyAndReplace($movejob){
         //echo 'executing api copy and replace';
@@ -297,5 +383,32 @@ class ShuffleJobModel extends CI_Model
         //$t = microtime(true);
         //echo 'time = '.($t-$s).PHP_EOL;
     }
-    
+    private function addProviderTimes($time1, $time2){
+        $output = array(
+            'googledrive'=>array(
+                'upload'=>0,
+                'download'=>0
+            ),
+            'onedrive'=>array(
+                'upload'=>0,
+                'download'=>0
+            ),
+            'dropbox'=>array(
+                'upload'=>0,
+                'download'=>0
+            )
+        );
+        foreach($time1 as $provider=>$times){
+            $output[$provider]['upload'] = $time1[$provider]['upload'] + $time2[$provider]['upload'];
+            $output[$provider]['download'] = $time1[$provider]['download'] + $time2[$provider]['download'];
+        }
+        return $output;
+    }
+    private function mergeApiCallTimes($api_time1, $api_time2){
+        $output = array();
+        $output['googledrive'] = array_merge($api_time1['googledrive'], $api_time2['googledrive']);
+        $output['onedrive'] = array_merge($api_time1['onedrive'], $api_time2['onedrive']);
+        $output['dropbox'] = array_merge($api_time1['dropbox'], $api_time2['dropbox']);
+        return $output;
+    }
 }
