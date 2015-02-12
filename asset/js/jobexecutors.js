@@ -8,6 +8,25 @@ var CHUNK_SIZE = 4*1024*1024;
 function ShuffleJobServerRegistrator(){
 
 }
+ShuffleJobServerRegistrator.registerShuffleJobCompleted = function(shuffle_job_id, success_callback){
+  $.ajax({
+		url: '../../shuffle/registershufflejobcompleted',
+		type: 'POST',
+		data: {
+			'shuffle_job_id':shuffle_job_id
+		},
+		async: true,
+		success: function(data, textstatus, request) {
+					success_callback(data);
+		},
+		error: function(xhr, status, error) {
+			var err = xhr.responseText;
+			console.log(err);
+			alert(err);
+			alert(error);
+		}
+	});
+}
 ShuffleJobServerRegistrator.registerChunkJobCompleted = function(chunk_job_id, uploaded_storage_id, success_callback){
 	$.ajax({
 		url: '../../shuffle/registerchunkjobcompleted',
@@ -238,8 +257,13 @@ WholeUploadExecutor.prototype.execute = function(){
       times.server_side_shuffle = end_server_side_shuffle_time - start_server_side_shuffle_time;
 			executor.serverSideShuffleCompleted = true;
 			if(checkShuffleComplete()){
-        start_upload_executor_time = new Date().getTime();
-        executor.uploadJobExecutor.execute();
+        ShuffleJobServerRegistrator.registerShuffleJobCompleted(executor.shufflePart.shuffle_job_id, function(resp){
+          if(resp.status == 'success'){
+            start_upload_executor_time = new Date().getTime();
+            executor.uploadJobExecutor.execute();
+          }
+        });
+        
 			}
 		});
     start_client_side_shuffle_time = new Date().getTime();
@@ -251,8 +275,13 @@ WholeUploadExecutor.prototype.execute = function(){
         times.client_side_shuffle = end_client_side_shuffle_time - start_client_side_shuffle_time;
         executor.clientSideShuffleCompleted = true;
         if(checkShuffleComplete()){
-          start_upload_executor_time = new Date().getTime();
-          executor.uploadJobExecutor.execute();
+          ShuffleJobServerRegistrator.registerShuffleJobCompleted(executor.shufflePart.shuffle_job_id, function(resp){
+            if(resp.status == 'success'){
+              start_upload_executor_time = new Date().getTime();
+              executor.uploadJobExecutor.execute();
+            }
+          });
+          
         }
       }
     );
@@ -558,31 +587,13 @@ WholeFileDownloadMoveJobExecutor.prototype.execute = function(callback){
 				upload_chunkjob(chunkjobs[chunkjobs_idx]);
 			}else{//all chunks done
 				//register move job complete
+        //new flow, don't register move job
+        /*
 				ShuffleJobServerRegistrator.registerMoveJobCompleted(chunkjob['move_job_id'], function(){
           callback(times);
         });
-				/*
-				$.ajax({
-					url: '../../shuffle/registermovejobcompleted',
-					type: 'POST',
-					data: {
-						'move_job_id':chunkjob['move_job_id'],
-					},
-					async: true,
-					success: function(data, textstatus, request) {
-						//all chunks done and move job registered to be done
-						//call the callback function
-						callback();
-					},
-					error: function(xhr, status, error) {
-						var err = xhr.responseText;
-						console.log(err);
-						alert(err);
-						alert(error);
-					}
-				});
-			*/
-				
+        */
+        callback(times);
 			}
 		}
 		function upload_chunkjob(chunkjob){
@@ -656,30 +667,13 @@ ChunkLevelMoveJobExecutor.prototype.execute = function(callback){
       executechunkjob(chunk_jobs[current_chunk_idx]);
 		}else{//all client chunk jobs completed
 			//check move job completed, we don't know if the server side chunk jobs are completed so we check
-			ShuffleJobServerRegistrator.checkMoveJobCompleted(executor.moveJob.move_job_id, function(){
+			//new flow, no need to check, just wait till the end and send a request to check for all.
+      /*
+      ShuffleJobServerRegistrator.checkMoveJobCompleted(executor.moveJob.move_job_id, function(){
         callback(times);
       });
-			/*
-			$.ajax({
-				url: '../../shuffle/registermovejobcompleted',
-				type: 'POST',
-				data: {
-					'move_job_id':executor.moveJob.move_job_id,
-				},
-				async: true,
-				success: function(data, textstatus, request) {
-					//all chunks done and move job registered to be done
-					//call the callback function
-					callback();
-				},
-				error: function(xhr, status, error) {
-					var err = xhr.responseText;
-					console.log(err);
-					alert(err);
-					alert(error);
-				}
-			});
-			*/
+      */
+      callback(times);
 		}
 	}
 	function executechunkjob(chunkjob){

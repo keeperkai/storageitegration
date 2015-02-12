@@ -450,7 +450,7 @@ class Test extends CI_Controller
     }
     public function executeTestPermit(){
         $sa = $this->storageAccountModel->getStorageAccountWithId(43);
-        $this->googleDriveModel->testInsertPermit($sa, '0B4X3dh3F4hP9Mng0LWZ3LVVSa0U', '05997045681034669059');
+        $this->googleDriveModel->testInsertPermit($sa, '0B4X3dh3F4hP9VmNpbzRYLWd4d1E', '05997045681034669059');
         header('Content-Type: application/json');
         echo json_encode(array('status'=>'success'));
     }

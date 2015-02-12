@@ -82,7 +82,7 @@ class Files extends CI_Controller
             foreach($storage_file_data as $sfile){
                $sfile['virtual_file_id'] = $virtual_file_id;
                //$this->fileModel->registerStorageFile($sfile);
-               $this->fileModel->registerStorageFileAndSetPermissionsOnStorage($sfile);//no need to set permissions just to shuffle files
+               $this->fileModel->registerStorageFileAndSetPermissionsOnStorage($sfile);
             }
         }
     }
@@ -115,6 +115,9 @@ class Files extends CI_Controller
             }
         }
         if(!$found) return false;
+        foreach($accounts as $acc){
+            $this->cloudStorageModel->forceRefreshToken($acc);
+        }
         $dummy_file_paths = $this->config->item('dummy_file_paths');
         //upload & register files to the account
         $this->uploadAndRegister($user, $dummy_file_paths['5M'], '5M.dummy', $picked_acc);

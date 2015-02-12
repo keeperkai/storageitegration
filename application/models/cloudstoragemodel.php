@@ -12,6 +12,12 @@ class CloudStorageModel extends CI_Model
 		$this->load->model('onedrivemodel', 'oneDriveModel');
         $this->load->model('dropboxmodel', 'dropboxModel');
     }
+    public function forceRefreshToken($storage_account){
+        $cs_model = $this->getCloudStorageModel($storage_account['token_type']);
+		if(method_exists ( $cs_model , 'forceRefreshToken')){
+			$cs_model->forceRefreshToken($storage_account);
+		}
+    }
     public function getCloudStorageModel($provider){
 		if($provider == 'googledrive'){
 			return $this->googleDriveModel;

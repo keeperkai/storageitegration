@@ -8,6 +8,18 @@ class ShuffleJobModel extends CI_Model
 		$this->load->model('cloudstoragemodel', 'cloudStorageModel');
 		parent::__construct();
 	}
+    public function registerShuffleJobCompleted($shuffle_job_id){
+        $shuffle_job = $this->getShuffleJobData($shuffle_job_id);
+        $move_jobs = $shuffle_job['move_job'];
+        $not_finished = false;
+        foreach($move_jobs as $movejob){
+            if(!$this->checkMoveJobCompleted($movejob['move_job_id'])){
+                $not_finished = true;
+            }
+        }
+        if($not_finished) return false;
+        else return true;
+    }
 	public function getChunkJobsWithMoveJobId($move_job_id){
 		$q = $this->db->get_where('chunk_job',array('move_job_id'=>$move_job_id));
 		$r = $q->result_array();
@@ -22,7 +34,6 @@ class ShuffleJobModel extends CI_Model
 		we need to do this because some of the movejobs are chunk level assigned and we don't know if the client
 		or the server will finish the jobs last, so both sides need to check when they finish the last chunkjob
 	*/
-
 	public function checkMoveJobCompleted($move_job_id){
         $q = $this->db->get_where('move_job', array('move_job_id'=>$move_job_id));
         $m = $q->result_array();
@@ -269,7 +280,9 @@ class ShuffleJobModel extends CI_Model
         $copysize = 1*1024*1024;//1MB for copying files into chunks
         //stream download file and stream upload to chunk targets
         $s = microtime(true)*1000;
-        $source_fp = $this->cloudStorageModel->downloadFile($movejob['source_account'], $movejob['source_file']);
+        $source_fp = tmpfile();
+        $source_file = $movejob['source_file'];
+        $this->cloudStorageModel->downloadFile($movejob['source_account'], $movejob['source_file']['storage_id'], $source_fp);
         $times[$movejob['source_account']['token_type']]['download'] += microtime(true)*1000 - $s;
         //upload each chunk
         foreach($movejob['chunk_job'] as $chunkjob){
@@ -289,17 +302,21 @@ class ShuffleJobModel extends CI_Model
                 $current_offset += $len;
             }while($current_offset<=$end_offset);
             //upload the target file
+            rewind($target_fp);
             $s2 = microtime(true)*1000;
-            $storage_id = $this->cloudStorageModel->uploadFile($storage_account, $file_name, $file_mime, $file);
+            $storage_id = $this->cloudStorageModel->uploadFile($chunkjob['target_account'], $source_file['name'], $source_file['mime_type'], $total_length, $target_fp);
             $times[$chunkjob['target_account']['token_type']]['upload'] += microtime(true)*1000 - $s2;
             //register chunk job completed and update the uploaded storage id
-            $this->registerChunkJobCompleted($chunk_job['chunk_job_id'], $storage_id);
+            $this->registerChunkJobCompleted($chunkjob['chunk_job_id'], $storage_id);
             //close the target file
             fclose($target_fp);
         }
+        
         //no need to check if move job is completed because this is a whole move job executor
         //just register completed
-        $this->registerMoveJobCompleted($movejob['move_job_id']);
+        //new flow: don't register move job
+        //$this->registerMoveJobCompleted($movejob['move_job_id']);
+        
         //close source file
         fclose($source_fp);
         return $times;
@@ -366,7 +383,8 @@ class ShuffleJobModel extends CI_Model
             }
         }
         //check move job completed
-        $this->checkMoveJobCompleted($movejob['move_job_id']);
+        //new flow don't check move job completed, wait till end
+        //$this->checkMoveJobCompleted($movejob['move_job_id']);
         return $times;
     }
     public function executeApiCopyAndReplace($movejob){
@@ -378,7 +396,8 @@ class ShuffleJobModel extends CI_Model
         $target_account = $movejob['chunk_job'][0]['target_account'];
         $storage_id = $this->cloudStorageModel->apiCopyFile($source_file['storage_id'], $source_account, $target_account);
         $this->registerChunkJobCompleted($movejob['chunk_job'][0]['chunk_job_id'], $storage_id);
-        $this->registerMoveJobCompleted($movejob['move_job_id']);
+        //new flow don't register move job
+        //$this->registerMoveJobCompleted($movejob['move_job_id']);
         
         //$t = microtime(true);
         //echo 'time = '.($t-$s).PHP_EOL;

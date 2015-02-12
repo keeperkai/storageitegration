@@ -720,13 +720,14 @@ class SchedulerModel extends CI_Model
 			$storage_file_id = $removed_file['storage_file_id'];
 			$map[$storage_file_id] = $removed_file;
 		}
+		$output = array();
 		foreach($original as $key=>$sfile){
 			$storage_file_id = $sfile['storage_file_id'];
-			if(array_key_exists($storage_file_id, $map)){
-				array_splice($original, $key, 1);
-			}
+			if(!array_key_exists($storage_file_id, $map)){
+				$output[]=$sfile;
+            }
 		}
-		return $original;
+		return $output;
 	}
 	private function updateAccountState($original, $updated){//function updates the min_free_quota_single_file_limit and free quotas of the storage account array
 		//and returns it

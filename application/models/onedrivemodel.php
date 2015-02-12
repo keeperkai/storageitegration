@@ -5,6 +5,9 @@ class OneDriveModel extends CI_Model
     {
         parent::__construct();
     }
+    public function forceRefreshToken($storage_account){
+        $this->refreshAccessToken($storage_account);
+    }
 	private function refreshAccessToken(&$storage_account){
 		$refresh_token = $storage_account['token'];
 		$onedrive_client_id = '0000000048127A68';

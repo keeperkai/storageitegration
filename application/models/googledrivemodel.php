@@ -9,6 +9,10 @@ class GoogleDriveModel extends CI_Model
 		//$this->load->model('storageaccountmodel', 'storageAccountModel');
 		
     }
+    public function forceRefreshToken($storage_account){
+        $client = $this->setupGoogleClient($storage_account);
+        $this->refreshAccessToken($client, $storage_account);
+    }
 	private function refreshAccessToken(&$client, &$storage_account){
 		$client->refreshToken($storage_account['token']);
 		//write the new token to database

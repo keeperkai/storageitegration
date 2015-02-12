@@ -8,6 +8,20 @@ class Shuffle extends CI_Controller
         $this->load->model('storageaccountmodel', 'storageAccountModel');
 		$this->load->model('shufflejobmodel', 'shuffleJobModel');
 	}
+    public function registerShuffleJobCompleted(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+		$shuffle_job_id = $this->input->post('shuffle_job_id');
+		header('Content-Type: application/json');
+        if($this->shuffleJobModel->registerShuffleJobCompleted($shuffle_job_id)){
+            echo json_encode(array('status'=>'success'));
+        }else{
+            echo json_encode(array('status'=>'success'));
+        }
+    }
 	public function registerChunkJobCompleted(){
 		if (!$this->session->userdata('ACCOUNT')) {
             header('Location: '.base_url().'index.php/pages/view/login');
