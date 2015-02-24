@@ -24,4 +24,15 @@ class StorageAccounts extends CI_Controller
         header('Content-Type: application/json');
         echo json_encode($storageaccounts);
     }
+    public function forceRefreshTokenAllAccounts(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $accounts = $this->storageAccountModel->getStorageAccounts($user);
+        foreach($accounts as $acc){
+            $this->cloudStorageModel->forceRefreshToken($acc);
+        }
+    }
 }

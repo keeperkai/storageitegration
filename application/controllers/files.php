@@ -13,6 +13,41 @@ class Files extends CI_Controller
         
     }
 	//test section------------------------------------------------------------------------------
+    public function getUploadInstructionsWithSelectiveForceChunking(){
+        if (!$this->session->userdata('ACCOUNT')) {
+            header('Location: '.base_url().'index.php/pages/view/login');
+            return;
+        }
+        $user = $this->session->userdata('ACCOUNT');
+        $mime = $this->input->post('mime');
+		$size = $this->input->post('size');
+		$extension = $this->input->post('extension');
+		$name = $this->input->post('name');
+        $ratio = $this->input->post('ratio');
+        $provider = $this->input->post('provider');
+        //this function will schedule and decide how the data will be moved to fit this file, and where the file should be uploaded to
+		//if it is just an upload without shuffle, the user agent should just upload according to the instructions
+		//if it involves shuffling, then the user agent should prompt and ask there is ? bytes that need to be shuffled for this file, are you willing to
+		//wait? if so, notify the server to start running move jobs for the server,then execute the instructions for the client side, once the user agent
+		//finishes a job, it notifies the server for file registration and delete of old storage data
+		
+        //ini_set('max_execution_time', 0);
+		$this->load->model('testshuffleschedulermodel','testShuffleSchedulerModel');
+		$this->load->model('dispatchermodel','dispatcherModel');
+		
+        $schedule_data = $this->testShuffleSchedulerModel->scheduleSelectiveForceChunk($user, $name, $size, $extension, $ratio, $provider);
+        $info_time = $schedule_data['account_schedule_info_time']*1000;
+        //var_dump($schedule_data);
+        $upload_plan = $this->dispatcherModel->dispatch($schedule_data, $user);
+        $upload_plan['account_schedule_info_time'] = $info_time;
+		
+        
+        header('Content-Type: application/json');
+		echo json_encode($upload_plan);
+        
+		
+    }
+    
     public function getUploadInstructionsWithPreparedAccountAndForcedShuffleRatio(){
         if (!$this->session->userdata('ACCOUNT')) {
             header('Location: '.base_url().'index.php/pages/view/login');

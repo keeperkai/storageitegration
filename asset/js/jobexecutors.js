@@ -1,4 +1,4 @@
-var CLIENT_MEMORY_LIMIT = 100*1024*1024;
+var CLIENT_MEMORY_LIMIT = 50*1024*1024;
 var CHUNK_SIZE = 4*1024*1024;
 
 //----------------------
@@ -187,6 +187,7 @@ WholeUploadExecutor.prototype.execute = function(){
     'server_side_shuffle': 0,
     'client_side_shuffle': 0,
     'upload_time': 0,
+    'register_upload_file_time':0,
     'total_time': 0,
     'client_shuffle_performance': {},
     /*
@@ -234,9 +235,11 @@ WholeUploadExecutor.prototype.execute = function(){
   var start_client_side_shuffle_time = {};
   var start_total_time = new Date().getTime();
   this.uploadJobExecutor = new UploadJobExecutor(this.uploadPart, this.file, this.parentFileId);
-	this.uploadJobExecutor.complete = function(){
+	this.uploadJobExecutor.complete = function(upload_executor_timings){
     var end_upload_executor_time = new Date().getTime();
-    times.upload_time = end_upload_executor_time - start_upload_executor_time;
+    //times.upload_time = end_upload_executor_time - start_upload_executor_time;
+    times.upload_time = upload_executor_timings.upload_time;
+    times.register_upload_file_time = upload_executor_timings.register_file_time;
     times.total_time = end_upload_executor_time - start_total_time;
 		executor.complete(times);
 	};
@@ -308,6 +311,10 @@ UploadJobExecutor.prototype.execute = function(){
 	var instructions = this.uploadInstructions;
 	var executor = this;
 	var current_idx = -1;
+  var timings = {
+    'upload_time':0,
+    'register_file_time':0,
+  };
   function executeNextUploadInstruction(){
 		current_idx++;
 		if(current_idx<instructions.length){
@@ -350,6 +357,7 @@ UploadJobExecutor.prototype.execute = function(){
 				);
 			}
 			//register virtual file and storage file metadata to our server
+      var registertimer = new StopWatch(true);
 			FileController.registerVirtualFileToSystem(
 				executor.file.type,
 				'file',
@@ -357,16 +365,20 @@ UploadJobExecutor.prototype.execute = function(){
 				executor.parentFileId, 
 				storage_file_data, 
 				function(){
-					executor.complete(executor.uploadInstructions);
+          timings.register_file_time = registertimer.pause();
+					//executor.complete(executor.uploadInstructions);
+          executor.complete(timings);
 				}
 			);
 			return;
 		}
 	}
 	function executeUploadInstruction(ins){
+    var uploadtimer = new StopWatch(true);
 		var uploader = new FileUploader(executor.file, ins.target_account);
 		uploader.complete = function(id){
 			//save the storage_id of the uploaded file to the instruction field 'uploaded_storage_id'
+      timings.upload_time += uploadtimer.pause();
 			executor.uploadInstructions[current_idx].uploaded_storage_id = id;
 			executeNextUploadInstruction();
 		};

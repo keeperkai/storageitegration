@@ -114,6 +114,32 @@ class StorageAccountModel extends CI_Model
         //var_dump($accounts);
 		return $accounts;
     }
+    public function getStorageAccountWithSelectiveForceChunk($user, $size, $ratio, $provider){
+        $accounts = $this->getStorageAccounts($user);
+        $waste_time = $accounts;
+        //waste the time that the normal get schedule info flow does.
+        $waste_time = $this->getSchedulingInfoForMultipleStorageAccounts($waste_time);
+		$fake_free_quota = 0;
+		$total = 15*1024*1024*1024;
+        foreach($accounts as $key=>$acc){
+            
+            if($acc['token_type'] == $provider){
+                $fake_free_quota = ceil($size*$ratio);
+            }else{
+                $fake_free_quota = 0;
+            }
+            $used = $total-$fake_free_quota;
+			$accounts[$key]['quota_info'] = array(
+				'total'=>$total,
+				'free'=>$fake_free_quota,
+				'used'=>$used
+			);
+			//var_dump($accounts[$key]['quota_info']);
+			$accounts[$key]['api_single_file_limit'] = $this->getApiSingleFileLimit($acc['token_type']);
+			$accounts[$key]['min_free_quota_single_file_limit'] = min($accounts[$key]['quota_info']['free'], $accounts[$key]['api_single_file_limit']);
+		}
+		return $accounts;
+    }
     public function getStorageAccountWithTestingSchedulingInfoForceSplitFair($user, $filesize){
         $accounts = $this->getStorageAccounts($user);
         $waste_time = $accounts;
