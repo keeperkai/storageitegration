@@ -10,6 +10,7 @@ class Files extends CI_Controller
         $this->load->model('cloudstoragemodel', 'cloudStorageModel');
         $this->load->model('googledrivemodel', 'googleDriveModel');
         $this->load->model('onedrivemodel', 'oneDriveModel');
+        $this->load->model('containermodel', 'containerModel');
         
     }
 	//test section------------------------------------------------------------------------------
@@ -25,6 +26,7 @@ class Files extends CI_Controller
 		$name = $this->input->post('name');
         $ratio = $this->input->post('ratio');
         $provider = $this->input->post('provider');
+        $parent_virtual_file_id = $this->input->post('parent_virtual_file_id');
         //this function will schedule and decide how the data will be moved to fit this file, and where the file should be uploaded to
 		//if it is just an upload without shuffle, the user agent should just upload according to the instructions
 		//if it involves shuffling, then the user agent should prompt and ask there is ? bytes that need to be shuffled for this file, are you willing to
@@ -38,10 +40,10 @@ class Files extends CI_Controller
         $schedule_data = $this->testShuffleSchedulerModel->scheduleSelectiveForceChunk($user, $name, $size, $extension, $ratio, $provider);
         $info_time = $schedule_data['account_schedule_info_time']*1000;
         //var_dump($schedule_data);
-        $upload_plan = $this->dispatcherModel->dispatch($schedule_data, $user);
+        $upload_plan = $this->dispatcherModel->dispatch($schedule_data, $user, $parent_virtual_file_id, $name);
         $upload_plan['account_schedule_info_time'] = $info_time;
 		
-        
+        $upload_plan = $this->containerModel->dispatchContainers($user, $upload_plan, $parent_virtual_file_id, $name);
         header('Content-Type: application/json');
 		echo json_encode($upload_plan);
         
@@ -60,6 +62,7 @@ class Files extends CI_Controller
 		$name = $this->input->post('name');
         $ratio = $this->input->post('ratio');
         $prepared_storage_account_id = $this->input->post('prepared_storage_account_id');
+        $parent_virtual_file_id = $this->input->post('parent_virtual_file_id');
 		//this function will schedule and decide how the data will be moved to fit this file, and where the file should be uploaded to
 		//if it is just an upload without shuffle, the user agent should just upload according to the instructions
 		//if it involves shuffling, then the user agent should prompt and ask there is ? bytes that need to be shuffled for this file, are you willing to
@@ -73,10 +76,10 @@ class Files extends CI_Controller
         $schedule_data = $this->testShuffleSchedulerModel->schedule($user, $name, $size, $extension, $prepared_storage_account_id, $ratio);
         $info_time = $schedule_data['account_schedule_info_time']*1000;
         //var_dump($schedule_data);
-        $upload_plan = $this->dispatcherModel->dispatch($schedule_data, $user);
+        $upload_plan = $this->dispatcherModel->dispatch($schedule_data, $user, $parent_virtual_file_id, $name);
         $upload_plan['account_schedule_info_time'] = $info_time;
 		
-        
+        $upload_plan = $this->containerModel->dispatchContainers($user, $upload_plan, $parent_virtual_file_id, $name);
         header('Content-Type: application/json');
 		echo json_encode($upload_plan);
         
@@ -95,7 +98,15 @@ class Files extends CI_Controller
         //upload the file and setup storage data
         $file_size = filesize($file_path);
         $file = fopen($file_path, 'r');
-        $storage_id = $this->cloudStorageModel->uploadFile($storage_account, $name, 'application/octet-stream', $file_size, $file);
+        $container_storage_id = '';
+        if($storage_account['token_type']=='googledrive'){
+            $parent_perms = array('owner'=>$user, 'writer'=>array(), 'reader'=>array());
+            $p_containers_for_user = $this->containerModel->getPermissionContainersForUser($user);
+            $container_storage_id = $this->containerModel->dispatchPermissionContainer($user, $storage_account, $parent_perms, $p_containers_for_user);
+        }else{
+            $container_storage_id = $this->cloudStorageModel->createFolder($storage_account, microtime().'_createdcontainer_for_'.$name);
+        }
+        $storage_id = $this->cloudStorageModel->uploadFile($container_storage_id, $storage_account, $name, 'application/octet-stream', $file_size, $file);
         $storage_file_data = array(
             array(
                 'storage_account_id'=>$storage_account['storage_account_id'],
@@ -207,6 +218,7 @@ class Files extends CI_Controller
         foreach($accounts as $acc){
             $this->cloudStorageModel->purge($acc);
         }
+        $this->containerModel->deletePermissionContainers($user);
     }
 	public function downloadWholeFileFromChunks(){
 		if (!$this->session->userdata('ACCOUNT')) {
@@ -326,6 +338,7 @@ class Files extends CI_Controller
 		$size = $this->input->post('size');
 		$extension = $this->input->post('extension');
 		$name = $this->input->post('name');
+        $parent_virtual_file_id = $this->input->post('parent_virtual_file_id');
 		//this function will schedule and decide how the data will be moved to fit this file, and where the file should be uploaded to
 		//if it is just an upload without shuffle, the user agent should just upload according to the instructions
 		//if it involves shuffling, then the user agent should prompt and ask there is ? bytes that need to be shuffled for this file, are you willing to
@@ -333,16 +346,19 @@ class Files extends CI_Controller
 		//finishes a job, it notifies the server for file registration and delete of old storage data
 		
         //ini_set('max_execution_time', 0);
-		$this->load->model('schedulermodel','schedulerModel');
+		//$this->load->model('testshuffleschedulermodel','testShuffleSchedulerModel');
+        $this->load->model('schedulermodel','schedulerModel');
 		$this->load->model('dispatchermodel','dispatcherModel');
 		
         $schedule_data = $this->schedulerModel->schedule($user, $name, $size, $extension);//0.04 secs
+        //$schedule_data = $this->testShuffleSchedulerModel->schedule();
         $info_time = $schedule_data['account_schedule_info_time']*1000;
         //var_dump($schedule_data);
-        $upload_plan = $this->dispatcherModel->dispatch($schedule_data, $user);//this line
+        $upload_plan = $this->dispatcherModel->dispatch($schedule_data, $user, $parent_virtual_file_id, $name);//this line
         $upload_plan['account_schedule_info_time'] = $info_time;
 		
         
+        $upload_plan = $this->containerModel->dispatchContainers($user, $upload_plan, $parent_virtual_file_id, $name);
         header('Content-Type: application/json');
 		echo json_encode($upload_plan);
         
@@ -415,7 +431,8 @@ class Files extends CI_Controller
 				//foreach storage file, register them and propagate the permissions to storage if needed
                 foreach($storage_file_data as $sfile){
                    $sfile['virtual_file_id'] = $virtual_file_id;
-                   $this->fileModel->registerStorageFileAndSetPermissionsOnStorage($sfile);
+                   //$this->fileModel->registerStorageFileAndSetPermissionsOnStorage($sfile);
+                   $this->fileModel->registerStorageFile($sfile);
                 }
             }
             
@@ -538,14 +555,13 @@ class Files extends CI_Controller
         $parent_virtual_file_id= $this->input->post('parent_virtual_file_id');
         $storage_id = '';
         $picked_account = '';
-        //get an account that can fit the file, if no account exists, output error
+        
+        $parent_perms = ($parent_virtual_file_id == -1)?array('owner'=>$user, 'writer'=>array(), 'reader'=>array()):$this->fileModel->getPermissionsForVirtualFileStructured($parent_virtual_file_id);
+        $p_containers_for_user = $this->containerModel->getPermissionContainersForUser($user);
         if($doc_type == 'document'){
             $filesize = filesize($this->config->item('document_file_path'));
             $accounts = $this->storageAccountModel->getStorageAccountsOfProviderAndQuotaLE($user, 'googledrive', $filesize);
-            if(sizeof($accounts)>0){
-                $picked_account = $accounts[0];
-                $storage_id = $this->googleDriveModel->createDocument($picked_account, $name);
-            }else{
+            if(sizeof($accounts)<=0){
                 header('Content-Type: application/json');
                 echo json_encode(array(
                     'status'=>'need_account',
@@ -553,13 +569,13 @@ class Files extends CI_Controller
                 ));
                 return;
             }
+            $picked_account = $accounts[0];
+            $p_cont_storage_id = $this->containerModel->dispatchPermissionContainer($user, $picked_account, $parent_perms, $p_containers_for_user);
+            $storage_id = $this->googleDriveModel->createDocument($p_cont_storage_id, $picked_account, $name);
         }else if($doc_type == 'spreadsheet'){
             $filesize = filesize($this->config->item('spreadsheet_file_path'));
             $accounts = $this->storageAccountModel->getStorageAccountsOfProviderAndQuotaLE($user, 'googledrive', $filesize);
-            if(sizeof($accounts)>0){
-                $picked_account = $accounts[0];
-                $storage_id = $this->googleDriveModel->createSpreadSheet($picked_account, $name);
-            }else{
+            if(sizeof($accounts)<=0){
                 header('Content-Type: application/json');
                 echo json_encode(array(
                     'status'=>'need_account',
@@ -567,13 +583,13 @@ class Files extends CI_Controller
                 ));
                 return;
             }
+            $picked_account = $accounts[0];
+            $p_cont_storage_id = $this->containerModel->dispatchPermissionContainer($user, $picked_account, $parent_perms, $p_containers_for_user);
+            $storage_id = $this->googleDriveModel->createSpreadSheet($p_cont_storage_id, $picked_account, $name);
         }else if($doc_type == 'presentation'){
             $filesize = filesize($this->config->item('spreadsheet_file_path'));
             $accounts = $this->storageAccountModel->getStorageAccountsOfProviderAndQuotaLE($user, 'googledrive', $filesize);
-            if(sizeof($accounts)>0){
-                $picked_account = $accounts[0];
-                $storage_id = $this->googleDriveModel->createPresentation($picked_account, $name);
-            }else{
+            if(sizeof($accounts)<=0){
                 header('Content-Type: application/json');
                 echo json_encode(array(
                     'status'=>'need_account',
@@ -581,6 +597,9 @@ class Files extends CI_Controller
                 ));
                 return;
             }
+            $picked_account = $accounts[0];
+            $p_cont_storage_id = $this->containerModel->dispatchPermissionContainer($user, $picked_account, $parent_perms, $p_containers_for_user);
+            $storage_id = $this->googleDriveModel->createPresentation($p_cont_storage_id, $picked_account, $name);
         }
         //register the file to our system
         //note that google documents take 0 bytes of space(according to google), so the storage_file_size is 0 no matter the original file size.
@@ -629,7 +648,8 @@ class Files extends CI_Controller
             $accounts = $this->storageAccountModel->getStorageAccountsOfProviderAndQuotaLE($user, 'onedrive', $filesize);
             if(sizeof($accounts)>0){
                 $picked_account = $accounts[0];
-                $storage_id = $this->oneDriveModel->createDocument($picked_account, $complete_file_name);
+                $f_id = $this->cloudStorageModel->createFolder($picked_account, microtime().'created_doc');
+                $storage_id = $this->oneDriveModel->createDocument($f_id, $picked_account, $complete_file_name);
             }else{
                 header('Content-Type: application/json');
                 echo json_encode(array(
@@ -645,7 +665,8 @@ class Files extends CI_Controller
             $accounts = $this->storageAccountModel->getStorageAccountsOfProviderAndQuotaLE($user, 'onedrive', $filesize);
             if(sizeof($accounts)>0){
                 $picked_account = $accounts[0];
-                $storage_id = $this->oneDriveModel->createSpreadSheet($picked_account, $complete_file_name);
+                $f_id = $this->cloudStorageModel->createFolder($picked_account, microtime().'created_doc');
+                $storage_id = $this->oneDriveModel->createSpreadSheet($f_id, $picked_account, $complete_file_name);
             }else{
                 header('Content-Type: application/json');
                 echo json_encode(array(
@@ -661,7 +682,8 @@ class Files extends CI_Controller
             $accounts = $this->storageAccountModel->getStorageAccountsOfProviderAndQuotaLE($user, 'onedrive', $filesize);
             if(sizeof($accounts)>0){
                 $picked_account = $accounts[0];
-                $storage_id = $this->oneDriveModel->createPresentation($picked_account, $complete_file_name);
+                $f_id = $this->cloudStorageModel->createFolder($picked_account, microtime().'created_doc');
+                $storage_id = $this->oneDriveModel->createPresentation($f_id, $picked_account, $complete_file_name);
             }else{
                 header('Content-Type: application/json');
                 echo json_encode(array(

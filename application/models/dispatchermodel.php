@@ -7,6 +7,7 @@ class DispatcherModel extends CI_Model
 		$this->load->model('storageaccountmodel', 'storageAccountModel');
 		$this->load->model('filemodel', 'fileModel');
 		$this->load->model('shufflejobmodel', 'shuffleJobModel');
+        $this->load->model('containermodel', 'containerModel');
 		parent::__construct();
 	}
 	private function chunkShuffleDataToFitSingleFileApiLimit($shuffle_data){
@@ -239,7 +240,7 @@ class DispatcherModel extends CI_Model
 		}
 		return $output;
 	}
-	public function dispatch($schedule_data, $user){
+	public function dispatch($schedule_data, $user, $parent_virtual_file_id, $name){
 		/*
 		output:
 		array(
@@ -299,6 +300,7 @@ class DispatcherModel extends CI_Model
 		}else{//status == upload
 			$output['schedule_data']['upload']=$upload_part;
 		}
+        
 		return $output;
 	}
 }

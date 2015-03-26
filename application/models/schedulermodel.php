@@ -936,11 +936,11 @@ class SchedulerModel extends CI_Model
         //get all the accounts and their info of the current user
         $scheduling_info_start = microtime(true);
 		//$accounts = $this->storageAccountModel->getStorageAccountWithSchedulingInfo($user);
-        //$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfoForceSplitFair($user, $size);
+        $accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfoForceSplitFair($user, $size);
         //$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfo($user);
         //$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfoForceSplit($user, $size);
         //$accounts = $this->storageAccountModel->getStorageAccountWithTestingSchedulingInfoForceShuffle($user, $size, 1.0/3.0);
-		$accounts = $this->storageAccountModel->getStorageAccountForceMultiChunked($user, $size);//forces api copy and chunk level assign with both client/server
+		//$accounts = $this->storageAccountModel->getStorageAccountForceMultiChunked($user, $size);//forces api copy and chunk level assign with both client/server
 		$scheduling_info_end = microtime(true);
         $get_schedule_info_time = $scheduling_info_end - $scheduling_info_start;
         $output['account_schedule_info_time'] = $get_schedule_info_time;

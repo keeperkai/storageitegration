@@ -151,11 +151,11 @@ class CloudStorageModel extends CI_Model
         returns:
         the id of the file on the storage provider
     */
-    public function uploadFile($storage_account, $file_name, $file_mime, $file_size, $file){
+    public function uploadFile($container_storage_id, $storage_account, $file_name, $file_mime, $file_size, $file){
         $cs_model = $this->getCloudStorageModel($storage_account['token_type']);
         //var_dump($storage_account['token_type']);
         //var_dump($cs_model);
-        return $cs_model->uploadFile($storage_account, $file_name, $file_mime, $file_size, $file);
+        return $cs_model->uploadFile($container_storage_id, $storage_account, $file_name, $file_mime, $file_size, $file);
     }
     /*
         download a storage file on the server and stream it to hard drive
@@ -192,14 +192,14 @@ class CloudStorageModel extends CI_Model
         
         returns: the file id of the new replica file.
     */
-    public function apiCopyFile($storage_id, $source_account, $target_account){
+    public function apiCopyFile($container_storage_id, $storage_id, $source_account, $target_account){
         $cs_model = $this->getCloudStorageModel($target_account['token_type']);
         if($source_account['token_type']!=$target_account['token_type']){
             throw new Exception('Trying to api copy between accounts that are from different storage providers');
             return;
         }
 		if(method_exists ( $cs_model , 'apiCopyFile')){
-			return $cs_model->apiCopyFile($storage_id, $source_account, $target_account);
+			return $cs_model->apiCopyFile($container_storage_id, $storage_id, $source_account, $target_account);
 		}else{
             throw new Exception('Trying to copy between accounts:'.PHP_EOL.var_export($source_account, true).PHP_EOL.PHP_EOL.var_export($target_account, true).PHP_EOL.'But the method is not supported in the cloud storage model');
         }
@@ -225,4 +225,42 @@ class CloudStorageModel extends CI_Model
         }
     }
     
+    //---------------------------------------------------new functions
+    /*
+        creates a folder and returns the storage_id of the folder in a sync fashion
+    */
+    public function createFolder($storage_account, $name){
+        $ch = $this->createFolderRequest($storage_account, $name);
+        $storage_id = $this->createFolderRequestYield($storage_account, curl_exec($ch));
+        curl_close($ch);
+        return $storage_id;
+    }
+    //make a create folder request curl handle and returns it.
+    public function createFolderRequest($storage_account, $name){
+        $cs_model = $this->getCloudStorageModel($storage_account['token_type']);
+        if(method_exists ( $cs_model , 'createFolderRequest')){
+			return $cs_model->createFolderRequest($storage_account, $name);
+		}else{
+            throw new Exception('Trying to to set storage file permission on a model that does not support this');
+        }
+    }
+    //get the storage_id from the create folder response
+    public function createFolderRequestYield($storage_account, $result){
+        $cs_model = $this->getCloudStorageModel($storage_account['token_type']);
+        if(method_exists ( $cs_model , 'createFolderRequestYield')){
+			return $cs_model->createFolderRequestYield($result);
+		}else{
+            throw new Exception('Trying to to set storage file permission on a model that does not support this');
+        }
+    }
+    
+    //set permission on the cloud storage provider for a storage file, $permission_map is the same as constructPermissionMap in containermodel
+    public function setStorageFilePermissions($storage_id, $storage_account, $permission_map){
+        $cs_model = $this->getCloudStorageModel($storage_account['token_type']);
+        if(method_exists ( $cs_model , 'setStorageFilePermissions')){
+			return $cs_model->setStorageFilePermissions($storage_id, $storage_account, $permission_map);
+		}else{
+            throw new Exception('Trying to to set storage file permission on a model that does not support this');
+        }
+    }
 }

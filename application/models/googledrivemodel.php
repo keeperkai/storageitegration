@@ -4,10 +4,59 @@ class GoogleDriveModel extends CI_Model
     public function __construct()
     {
         parent::__construct();
-		
+
 		//$this->load->model('filemodel', 'fileModel');
 		//$this->load->model('storageaccountmodel', 'storageAccountModel');
-		
+
+    }
+    public function createFolderRequest($storage_account, $name){
+        /*
+        POST https://www.googleapis.com/drive/v2/files
+        Authorization: Bearer {ACCESS_TOKEN}
+        Content-Type: application/json
+        ...
+        {
+          "title": "pets",
+          "parents": [{"id":"0ADK06pfg"}]
+          "mimeType": "application/vnd.google-apps.folder"
+        }
+        */
+        $data = array(
+            'title'=>$name,
+            'mimeType'=>"application/vnd.google-apps.folder"
+        );
+        $data_string = json_encode($data);
+        $token = $this->getAccessTokenForClient($storage_account);
+        $ch = curl_init('https://www.googleapis.com/drive/v2/files');
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $data_string);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+            'Content-Type: application/json',
+            'Authorization: Bearer '.$token,
+            'Content-Length: ' . strlen($data_string))
+        );
+        return $ch;
+    }
+    public function createFolderRequestYield($result){
+        //var_dump('create folder response is');
+        //var_dump($result);
+        $response = json_decode($result, true);
+        return $response['id'];
+    }
+    public function setStorageFilePermissions($storage_id, $storage_account, $permission_map){
+        //for owner
+        foreach($permission_map['owner'] as $user=>$whatever){
+            $this->setPermissionForUser($storage_id, $storage_account, $user, 'owner');
+        }
+        
+        foreach($permission_map['writer'] as $user=>$whatever){
+            $this->setPermissionForUser($storage_id, $storage_account, $user, 'writer');
+        }
+        
+        foreach($permission_map['reader'] as $user=>$whatever){
+            $this->setPermissionForUser($storage_id, $storage_account, $user, 'reader');
+        }
     }
     public function forceRefreshToken($storage_account){
         $client = $this->setupGoogleClient($storage_account);
@@ -32,7 +81,7 @@ class GoogleDriveModel extends CI_Model
 			$this->refreshAccessToken($client, $storage_account);
 		}
 		//check current token expire date
-		
+
 		$client->setAccessToken($storage_account['current_token']);
 		if($client->isAccessTokenExpired()){//refresh the token
 			$this->refreshAccessToken($client, $storage_account);
@@ -83,7 +132,7 @@ class GoogleDriveModel extends CI_Model
 		//'total': total quota for this account
 		$client = $this->setupGoogleClient($storage_account);
 		$drive = $this->setupDriveService($client);
-		
+
 		$about = $drive->about->get();
 		$total = $about->getQuotaBytesTotal();
 		$used = $about->getQuotaBytesUsed();
@@ -103,7 +152,7 @@ class GoogleDriveModel extends CI_Model
         try{
             $service->files->delete($storage_id);
         }catch(Exception $e){
-        
+
         }
 	}
     //for google drive the alternate link is the .../storage_id/edit page
@@ -173,7 +222,7 @@ class GoogleDriveModel extends CI_Model
         }
     }
     public function setPermissionForUser($storage_id, $storage_account, $user, $role){
-		//sfile is a join of storage_file and storage_account, so it contains all the necessary data for this single storage file.
+		//storage_id is a join of storage_file and storage_account, so it contains all the necessary data for this single storage file.
 		//adds the permissions to the storage files on gdrive
 		//setup the client and get the list of permissions on gdrive for the file
 		//$storage_account = $this->storageAccountModel->getStorageAccountWithId($storage_account_id);
@@ -296,7 +345,7 @@ class GoogleDriveModel extends CI_Model
                 $parameters['pageToken'] = $pageToken;
                 }
                 $children = $service->children->listChildren($folder_id, $parameters);
-        
+
                 foreach ($children->getItems() as $child) {
                 //print 'File Id: ' . $child->getId();
                     $output[]=$child->getId();
@@ -316,16 +365,16 @@ class GoogleDriveModel extends CI_Model
             $this->deleteStorageFile($file_id, $storage_account);
         }
     }
-    
-    
+
+
     //Shuffle related / upload/download/copy files------------
-    
+
     //direct upload without using hard drive
     public function uploadFileData($storage_account, $file_name, $file_mime, $file_size, $data){
         $client = $this->setupGoogleClient($storage_account);
         $service = $this->setupDriveService($client);
-        
-        
+
+
         $google_api_file = new Google_Service_Drive_DriveFile();
         $google_api_file->title = $file_name;
         $chunkSizeBytes = 1 * 1024 * 1024;
@@ -346,11 +395,11 @@ class GoogleDriveModel extends CI_Model
         $media->setFileSize($file_size);
 
         $status = false;
-        
-        
+
+
           $status = $media->nextChunk($data);
-          
-        
+
+
 
         // The final value of $status will be the data from the API for the object
         // that has been uploaded.
@@ -362,13 +411,15 @@ class GoogleDriveModel extends CI_Model
         $client->setDefer(false);
         return $result['id'];
     }
-    public function uploadFile($storage_account, $file_name, $file_mime, $file_size, $file, $convert = false){
+    public function uploadFile($container_storage_id, $storage_account, $file_name, $file_mime, $file_size, $file, $convert = false){
         $client = $this->setupGoogleClient($storage_account);
         $service = $this->setupDriveService($client);
-        
-        
+
         $google_api_file = new Google_Service_Drive_DriveFile();
         $google_api_file->title = $file_name;
+        $container = new Google_Service_Drive_ParentReference();
+        $container->setId($container_storage_id);
+        $google_api_file->setParents(array($container));
         $chunkSizeBytes = 1 * 1024 * 1024;
 
         // Call the API with the media upload, defer so it doesn't immediately return.
@@ -396,23 +447,23 @@ class GoogleDriveModel extends CI_Model
         $status = false;
         //var_dump('uploading for '.$file_name.' :'.PHP_EOL);
         //var_dump('file pointer is at: '.ftell($file));
-        
+
         /*
         fseek($file, 0, SEEK_END);
         var_dump('file resource size: '.ftell($file));
         rewind($file);
         */
-        
+
         //rewind($file);//for some reason, we need to rewind the file handle even if it's position is at 0
         //var_dump('file pointer is at: '.ftell($file));
-        
-        
+
+
         while (!$status && !feof($file)) {
           $chunk = fread($file, $chunkSizeBytes);
           $status = $media->nextChunk($chunk);
           //var_dump(strlen($chunk));
           //var_dump(feof($file));
-          
+
         }
 
         // The final value of $status will be the data from the API for the object
@@ -433,7 +484,7 @@ class GoogleDriveModel extends CI_Model
         $drive = $this->setupDriveService($client);
         $google_api_file = $drive->files->get($storage_id);
         $dl_link = $google_api_file->getDownloadUrl();
-        
+
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $dl_link);
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
@@ -443,7 +494,7 @@ class GoogleDriveModel extends CI_Model
             )
         );
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        
+
         $result = curl_exec($ch);
         curl_close($ch);
         return $result;
@@ -454,10 +505,10 @@ class GoogleDriveModel extends CI_Model
         file: the files resource to write to, the function will start writing from the current position, so you need to initialize it to the
         right position. By doing it this way, you can download a lot of data from different storage files and append them into the same file
         resource.
-        
+
         Take note that curl rewinds the file pointer after it has finished the operation. If you want to append multiple downloads together, use
         fseek($fp, 0, SEEK_END); to move the position to the current end before calling this function.
-        
+
         returns:
         the handle to the file resource that has been downloaded, with the position set back to 0
     */
@@ -466,7 +517,7 @@ class GoogleDriveModel extends CI_Model
         $drive = $this->setupDriveService($client);
         $google_api_file = $drive->files->get($storage_id);
         $dl_link = $google_api_file->getDownloadUrl();
-        
+
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $dl_link);
         curl_setopt($ch, CURLOPT_FILE, $file);
@@ -480,7 +531,7 @@ class GoogleDriveModel extends CI_Model
         curl_close($ch);
         rewind($file);//it seems that for w+/r+ files between reading and writing you need to rewind for some reason
         //see http://php.net/manual/en/function.fflush.php
-        
+
         //testing downloaded file resource
         /*
         $testdata = fread($file, 50);
@@ -495,7 +546,7 @@ class GoogleDriveModel extends CI_Model
         //the result is the first section will result in a 0 byte read
         //after the rewind the read will succeed with 50 bytes read.
         */
-        
+
     }
     /*
         this function downloads a part of a storage file to our server, the byte offsets are specified by $start_offset and $end_offset(inclusive),
@@ -506,7 +557,7 @@ class GoogleDriveModel extends CI_Model
         $drive = $this->setupDriveService($client);
         $google_api_file = $drive->files->get($storage_id);
         $dl_link = $google_api_file->getDownloadUrl();
-        
+
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $dl_link);
         curl_setopt($ch, CURLOPT_FILE, $file);
@@ -525,16 +576,29 @@ class GoogleDriveModel extends CI_Model
     /*
         copies a file using $target_account on the storage provider through api calls, so we don't need to actually transfer the data.
         note that this can be called with another account, so we can transfer data between accounts.
-        
+        places the file in the $container_storage_id folder on the cloud storage provider
         Note: make sure the target_account has the permissions to the file before calling this.
     */
-    public function apiCopyFile($storage_id, $source_account, $target_account){
+    public function apiCopyFile($container_storage_id, $storage_id, $source_account, $target_account){
+        /*
+        var_dump('container_storage_id');
+        var_dump($container_storage_id);
+        var_dump('storage_id');
+        var_dump($storage_id);
+        var_dump('source_account');
+        var_dump($source_account);
+        var_dump('target_account');
+        var_dump($target_account);
+        */
         $client = $this->setupGoogleClient($target_account);
         $drive = $this->setupDriveService($client);
         $source_file = $drive->files->get($storage_id);
-        
+
         $copiedFile = new Google_Service_Drive_DriveFile();
         $copiedFile->setTitle($source_file->getTitle());
+        $container = new Google_Service_Drive_ParentReference();
+        $container->setId($container_storage_id);
+        $copiedFile->setParents(array($container));
         $result = array();
         try {
             //$s = microtime(true);
@@ -600,30 +664,30 @@ class GoogleDriveModel extends CI_Model
             'link'=>$dl_link
         );
     }
-    public function createDocument($storage_account, $name){
+    public function createDocument($container_storage_id, $storage_account, $name){
         $doc_path = $this->config->item('document_file_path');
         $file = fopen($doc_path, 'r');
         $file_size = filesize($doc_path);
         $file_mime = $this->config->item('document_file_mime');
-        $id = $this->uploadFile($storage_account, $name, $file_mime, $file_size, $file, true);
+        $id = $this->uploadFile($container_storage_id, $storage_account, $name, $file_mime, $file_size, $file, true);
         fclose($file);
         return $id;
     }
-    public function createSpreadSheet($storage_account, $name){
+    public function createSpreadSheet($container_storage_id, $storage_account, $name){
         $doc_path = $this->config->item('spreadsheet_file_path');
         $file = fopen($doc_path, 'r');
         $file_size = filesize($doc_path);
         $file_mime = $this->config->item('spreadsheet_file_mime');
-        $id = $this->uploadFile($storage_account, $name, $file_mime, $file_size, $file, true);
+        $id = $this->uploadFile($container_storage_id, $storage_account, $name, $file_mime, $file_size, $file, true);
         fclose($file);
         return $id;
     }
-    public function createPresentation($storage_account, $name){
+    public function createPresentation($container_storage_id, $storage_account, $name){
         $doc_path = $this->config->item('presentation_file_path');
         $file = fopen($doc_path, 'r');
         $file_size = filesize($doc_path);
         $file_mime = $this->config->item('presentation_file_mime');
-        $id = $this->uploadFile($storage_account, $name, $file_mime, $file_size, $file, true);
+        $id = $this->uploadFile($container_storage_id, $storage_account, $name, $file_mime, $file_size, $file, true);
         fclose($file);
         return $id;
     }

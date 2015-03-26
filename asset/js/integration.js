@@ -701,7 +701,7 @@ function uploadNoneDocumentFile(file){
   //for (iii): just try to find any account with enough size(after shuffling), if there isn't, then tell the user to link a random account.
   //if there isn't then tell them to link one, if there is then just ask for the upload instruction
   //var group = checkFileGrouping(file);//returns group, and highest applicable storage providers
-  var instructions = getUploadInstructions(file, function(instructions){
+  var instructions = FileController.getUploadInstructions(file, ((rightClickedNode == null)? -1: rightClickedNode.virtual_file_id), function(instructions){
     
     if(instructions.status!='impossible'){
       var schedule_data = instructions.schedule_data;
@@ -1239,21 +1239,21 @@ var context_menu_object = [
           }
         },
         {
-          name: 'Micro$oft Word (:P)',
+          name: 'Microsoft Word',
           title: 'make_onedrive_doc',
           fun: function() {
             createOnedriveDoc('document');
           }
         },
         {
-          name: 'Micro$oft Excel (:P)',
+          name: 'Microsoft Excel',
           title: 'make_onedrive_spreadsheet',
           fun: function() {
             createOnedriveDoc('spreadsheet');
           }
         },
         {
-          name: 'Micro$oft PowerPoint (:P)',
+          name: 'Microsoft PowerPoint',
           title: 'make_onedrive_presentation',
           fun: function() {
             createOnedriveDoc('presentation');

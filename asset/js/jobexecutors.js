@@ -188,6 +188,7 @@ WholeUploadExecutor.prototype.execute = function(){
     'client_side_shuffle': 0,
     'upload_time': 0,
     'register_upload_file_time':0,
+    'register_shuffle_job_complete_time':0,
     'total_time': 0,
     'client_shuffle_performance': {},
     /*
@@ -260,7 +261,10 @@ WholeUploadExecutor.prototype.execute = function(){
       times.server_side_shuffle = end_server_side_shuffle_time - start_server_side_shuffle_time;
 			executor.serverSideShuffleCompleted = true;
 			if(checkShuffleComplete()){
+        var shuffle_job_complete_timer = new StopWatch(true);
         ShuffleJobServerRegistrator.registerShuffleJobCompleted(executor.shufflePart.shuffle_job_id, function(resp){
+          var sjct = shuffle_job_complete_timer.pause();
+          times['register_shuffle_job_complete_time'] =  sjct;
           if(resp.status == 'success'){
             start_upload_executor_time = new Date().getTime();
             executor.uploadJobExecutor.execute();
@@ -375,7 +379,7 @@ UploadJobExecutor.prototype.execute = function(){
 	}
 	function executeUploadInstruction(ins){
     var uploadtimer = new StopWatch(true);
-		var uploader = new FileUploader(executor.file, ins.target_account);
+		var uploader = new FileUploader(executor.file, ins.target_account, ins.container_storage_id);
 		uploader.complete = function(id){
 			//save the storage_id of the uploaded file to the instruction field 'uploaded_storage_id'
       timings.upload_time += uploadtimer.pause();
@@ -391,15 +395,16 @@ UploadJobExecutor.prototype.execute = function(){
 	executeNextUploadInstruction();
 	
 }
-function FileUploader(file, target_account){
+function FileUploader(file, target_account, container_storage_id){
 	this.file = file;
 	this.storageAccount = target_account;
 	var complete = function(file_id){};
+  this.containerStorageId = container_storage_id;
 }
 FileUploader.prototype.uploadWhole = function(){
 	var executor = this;
 	var file = this.file;
-	var uploader = DataUploadExecutorFactory.createDataUploadExecutor(this.storageAccount, file.name, file.type || 'application/octet-stream', file.size);
+	var uploader = DataUploadExecutorFactory.createDataUploadExecutor(this.storageAccount, file.name, file.type || 'application/octet-stream', file.size, executor.containerStorageId);
 	uploader.complete = function(id){
 		executor.complete(id);
 	}
@@ -408,7 +413,7 @@ FileUploader.prototype.uploadWhole = function(){
 FileUploader.prototype.uploadPart = function(bstart, bend){
 	var executor = this;
 	var file = this.file;
-	var uploader = DataUploadExecutorFactory.createDataUploadExecutor(this.storageAccount, 'chunk_data_'+file.name, file.type || 'application/octet-stream', bend-bstart+1);
+	var uploader = DataUploadExecutorFactory.createDataUploadExecutor(this.storageAccount, 'chunk_data_'+file.name, file.type || 'application/octet-stream', bend-bstart+1, executor.containerStorageId);
 	uploader.complete = function(id){
 		executor.complete(id);
 	}
@@ -616,7 +621,7 @@ WholeFileDownloadMoveJobExecutor.prototype.execute = function(callback){
 				uploadfilename = 'chunked_data_'+uploadfilename;
 			}
 			var upload_timer = new StopWatch(true);
-      var chunk_uploader = DataUploadExecutorFactory.createDataUploadExecutor(chunkjob.target_account, sourcefile.name, sourcefile.mime_type, sourcefile.storage_file_size);
+      var chunk_uploader = DataUploadExecutorFactory.createDataUploadExecutor(chunkjob.target_account, sourcefile.name, sourcefile.mime_type, sourcefile.storage_file_size, chunkjob.container_storage_id);
 			chunk_uploader.complete =  function(file_id){
         //update times
         var ul_time = upload_timer.pause();
@@ -700,7 +705,7 @@ ChunkLevelMoveJobExecutor.prototype.execute = function(callback){
 		var filetype = source_file.mime_type;
 		var filesize = source_file.storage_file_size;
     var chunkjob_size = chunkjob.byte_offset_end - chunkjob.byte_offset_start + 1;
-		var uploader = DataUploadExecutorFactory.createDataUploadExecutor(chunkjob.target_account, source_file.name, source_file.mime_type, chunkjob_size);
+		var uploader = DataUploadExecutorFactory.createDataUploadExecutor(chunkjob.target_account, source_file.name, source_file.mime_type, chunkjob_size, chunkjob.container_storage_id);
     //here we need to determine where we can upload the whole data once or the memory isn't enough, then we need to upload the data using chunk dl->chunk upload, which is not supported by all
     //uploaders, but the client executor shouldn't have to worry about this because the scheduler will take care of this, all we need to do is check the chunk size
     var ul_timer = new StopWatch();
@@ -780,20 +785,20 @@ ChunkJobExecutor.prototype.execute = function(callback){
 function DataUploadExecutorFactory(){
 	
 }
-DataUploadExecutorFactory.createDataUploadExecutor = function(storage_account, filename, filetype, filesize){
+DataUploadExecutorFactory.createDataUploadExecutor = function(storage_account, filename, filetype, filesize, container_storage_id){
 	if(storage_account.token_type == 'onedrive'){
-		return new OneDriveDataUploadExecutor(filename, filetype, storage_account.access_token, filesize);
+		return new OneDriveDataUploadExecutor(filename, filetype, storage_account.access_token, filesize, container_storage_id);
 	}else if(storage_account.token_type == 'googledrive'){
-		return new GoogleDriveDataUploadExecutor(filename, filetype, storage_account.access_token, filesize);
+		return new GoogleDriveDataUploadExecutor(filename, filetype, storage_account.access_token, filesize, container_storage_id);
 	}else if(storage_account.token_type == 'dropbox'){
-    return new DropboxDataUploadExecutor(filename, filetype, storage_account.access_token, filesize);
+    return new DropboxDataUploadExecutor(filename, filetype, storage_account.access_token, filesize, container_storage_id);
   }
 }
 /*
 Data upload/download executors load/write binary data to/from javascript from/to cloud storages
 not actual file downloaders and file(blob) upload/downloaders.
 */
-function DataUploadExecutor(filename, filetype, access_token, filesize){
+function DataUploadExecutor(filename, filetype, access_token, filesize, container_storage_id){
 	//var current_byte_offset
 	//var fileName
 	//var fileSize
@@ -807,7 +812,7 @@ function DataUploadExecutor(filename, filetype, access_token, filesize){
 	
 }
 //concrete classes for each cloud provider
-function DropboxDataUploadExecutor(filename, filetype, access_token, filesize){
+function DropboxDataUploadExecutor(filename, filetype, access_token, filesize, container_storage_id){
   this.fileName = filename;
 	this.fileType = filetype || 'application/octet-stream';;
 	this.accessToken = access_token;
@@ -817,6 +822,7 @@ function DropboxDataUploadExecutor(filename, filetype, access_token, filesize){
   this.chunkUploadUrl = '';
   this.currentByteOffset = 0;
   this.uploadId = '';
+  this.containerStorageId = container_storage_id;
 }
 /*
   commits chunk upload, returns the path of the file in the callback function argument
@@ -851,12 +857,12 @@ DropboxDataUploadExecutor.prototype._commitUploadChunk = function(callback){
     });
   }
   //create a dir using the current timestamp
-  var dir_name = new Date().getTime()+'_SI_gen_dir';
-  //make directory
-  makeDir(dir_name, function(dirpath){
+  //var dir_name = new Date().getTime()+'_SI_gen_dir';
+  //make directory, we no longer need to do this, moved to the server side
+  //makeDir(dir_name, function(dirpath){
     //commit the upload
     $.ajax({
-      url: 'https://api-content.dropbox.com/1/commit_chunked_upload/auto'+dirpath+'/'+executor.fileName,
+      url: 'https://api-content.dropbox.com/1/commit_chunked_upload/auto'+executor.containerStorageId+'/'+executor.fileName,
       type: 'POST',
       dataType:'json',
       headers: {
@@ -878,7 +884,7 @@ DropboxDataUploadExecutor.prototype._commitUploadChunk = function(callback){
       }
     });
     
-  });
+  //});
   
 }
 DropboxDataUploadExecutor.prototype._uploadChunk = function(upload_id, data, callback){
@@ -932,7 +938,7 @@ DropboxDataUploadExecutor.prototype.uploadWhole = function(data){
   var chunksize = 100*1024*1024;
   var executor = this;
   executor.chunkUploaded = function(){
-    uploadnextchunk();  
+    uploadnextchunk();
   };
   function uploadnextchunk(){
     //console.log('upload next chunk called, current offset='+executor.currentByteOffset+', filesize='+executor.fileSize);
@@ -947,7 +953,7 @@ DropboxDataUploadExecutor.prototype.uploadWhole = function(data){
   uploadnextchunk();
   
 }
-function GoogleDriveDataUploadExecutor(filename, filetype, access_token, filesize){
+function GoogleDriveDataUploadExecutor(filename, filetype, access_token, filesize, container_storage_id){
 	this.currentByteOffset = 0;
 	this.fileName = filename;
 	this.fileType = filetype || 'application/octet-stream';;
@@ -956,6 +962,7 @@ function GoogleDriveDataUploadExecutor(filename, filetype, access_token, filesiz
 	this.chunkUploadUrl = '';
   this.chunkUploaded = function(){};
   this.complete = function(){};
+  this.containerStorageId = container_storage_id;
 }
 GoogleDriveDataUploadExecutor.prototype.getUploadUrl = function(callback){
 	var executor = this;
@@ -963,6 +970,7 @@ GoogleDriveDataUploadExecutor.prototype.getUploadUrl = function(callback){
 	var contentType = this.fileType;
 	var metadata = {
 		'title': this.fileName,
+    'parents':[{"id":executor.containerStorageId}],
 		'mimeType': contentType
 	};
 	var requesturlwithquery = 'https://www.googleapis.com/upload/drive/v2/files?uploadType=resumable';
@@ -1061,12 +1069,13 @@ GoogleDriveDataUploadExecutor.prototype.uploadWhole = function(data){
   });
 	
 }
-function OneDriveDataUploadExecutor(filename, filetype, access_token, filesize){
+function OneDriveDataUploadExecutor(filename, filetype, access_token, filesize, container_storage_id){
 	this.currentByteOffset = 0;
 	this.fileName = filename;
 	this.fileType = filetype || 'application/octet-stream';;
 	this.accessToken = access_token;
 	this.fileSize = filesize;
+  this.containerStorageId = container_storage_id;
 	this.uploadUrl = '';
 }
 /*
@@ -1075,6 +1084,8 @@ function OneDriveDataUploadExecutor(filename, filetype, access_token, filesize){
 */
 OneDriveDataUploadExecutor.prototype.getUploadUrl = function(callback){
   var executor = this;
+  /*
+  
   if(this.uploadUrl == ''){
     //create a folder:
     //POST https://apis.live.net/v5.0/me/skydrive
@@ -1104,7 +1115,11 @@ OneDriveDataUploadExecutor.prototype.getUploadUrl = function(callback){
   }else{
     callback();
   }
-  
+  */
+  if(this.uploadUrl == ''){
+    this.uploadUrl = 'https://apis.live.net/v5.0/'+this.containerStorageId+'/files?access_token='+executor.accessToken+'&downsize_photo_uploads=false&overwrite=ChooseNewName';
+  }
+  callback();
 }
 OneDriveDataUploadExecutor.prototype.uploadChunk = function(data){
 	console.log('chunk upload for onedrive is not supported');

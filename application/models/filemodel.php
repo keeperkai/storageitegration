@@ -179,12 +179,12 @@ class FileModel extends CI_Model
         output format:
         array(
             'owner'=>owner account,
-            'writers'=>array(
+            'writer'=>array(
                 account1,
                 account2,
                 ...
             )
-            'readers'=>array(
+            'reader'=>array(
                 reader account1,
                 reader account2,
                 ...
@@ -206,6 +206,33 @@ class FileModel extends CI_Model
             }
         }
         return $output;
+    }
+    /*
+    input is the kind of permission for a resource as in getPermissionsForVirtualFileStructured
+    we will output a map like:
+    array(
+            array(
+            'owner'=>array('user1'=>ooxx)//only one key
+            'writer'=>array('user2'=>ooxx,...)
+            'reader'=>...)
+        );
+    this is better because when needing to check whether a certain user is included in the reader/writer ... it is faster
+    */
+    public function constructPermissionMap($structured_permission){
+        $output = array(
+            'owner'=>array($structured_permission['owner']=>true),
+            'writer'=>array_flip($structured_permission['writer']),
+            'reader'=>array_flip($structured_permission['reader'])
+        );
+        return $output;
+    }
+    //returns if two permissions are the same
+    //$p1,$p2 are two permission map resources like the output of constructPermissionMap
+    public function isSamePermissions($p1, $p2){
+        if(!array_has_same_keys($p1['owner'],$p2['owner'])) return false;
+        if(!array_has_same_keys($p1['writer'], $p2['writer'])) return false;
+        if(!array_has_same_keys($p1['reader'], $p2['reader']))  return false;
+        return true;
     }
 	public function getPermissionsForVirtualFile($virtual_file_id){
 		$q = $this->db->get_where('file_permissions', array('virtual_file_id'=>$virtual_file_id));
@@ -568,7 +595,8 @@ class FileModel extends CI_Model
 				//foreach storage file, register them and propagate the permissions to storage if needed
                 foreach($storage_file_data as $sfile){
                    $sfile['virtual_file_id'] = $virtual_file_id;
-                   $this->registerStorageFileAndSetPermissionsOnStorage($sfile);
+                   //$this->registerStorageFileAndSetPermissionsOnStorage($sfile);
+                   $this->registerStorageFile($sfile);
                 }
             }
             

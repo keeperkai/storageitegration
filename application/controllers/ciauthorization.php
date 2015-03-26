@@ -7,6 +7,7 @@ class CIAuthorization extends CI_Controller
         $this->load->model('filemodel','fileModel');
         $this->load->model('storageaccountmodel','storageAccountModel');
         $this->load->model('cloudstoragemodel','storageAccountModel');
+        $this->load->model('containermodel','containerModel');
     }
     public function connectOneDriveAccount(){
         $storage_account_name = $this->input->get('storage_account_name');
@@ -211,7 +212,8 @@ class CIAuthorization extends CI_Controller
 			'time_stamp'=>$curr_timestamp->format('Y-m-d H:i:s')
         );
         $this->db->insert('storage_account', $dbdata);
-        
+        $new_storage_account_id = $this->db->insert_id();
+        $new_sa = $this->storageAccountModel->getStorageAccountWithId($new_storage_account_id);
         
         //Propagate the permissions for the files that this account has access to on our platform
         //1. files on the same provider owned by this user
@@ -224,7 +226,8 @@ class CIAuthorization extends CI_Controller
             return;
         }
         $user = $this->session->userdata('ACCOUNT');
-        $this->addPermissionsForNewAccountOnProvider('googledrive', $user, $permission_id->getId());
+        //$this->addPermissionsForNewAccountOnProvider('googledrive', $user, $permission_id->getId());
+        $this->containerModel->updatePermissionContainers($new_sa);
         header("Location: ".base_url()."index.php/pages/view/manageaccount");
     }
     private function addPermissionsForNewAccountOnProvider($provider, $user, $new_account_id){

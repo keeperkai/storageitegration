@@ -286,14 +286,7 @@ class OneDriveModel extends CI_Model
             $this->deleteStorageFile($file_id, $storage_account);
         }
     }
-    //Shuffle related / upload/download/copy files------------
-    /*
-        creates a folder under the root folder
-        
-        returns:
-        the upload_location of the created folder
-    */
-    private function createFolder($storage_account, $name){
+    public function createFolderRequest($storage_account, $name){
         //POST https://apis.live.net/v5.0/me/skydrive
         //Authorization: Bearer ACCESS_TOKEN
         //Content-Type: application/json
@@ -315,6 +308,9 @@ class OneDriveModel extends CI_Model
             )
             
         );
+        return $ch;
+    }
+    public function createFolderRequestYield($result){
         /*
             result format:
             {
@@ -326,14 +322,14 @@ class OneDriveModel extends CI_Model
                 ...
             }
         */
-        $result = curl_exec($ch);
         $result = json_decode($result, true);
-        curl_close($ch);
-        return $result['upload_location'];
+        return $result['id'];
     }
-    public function uploadFile($storage_account, $file_name, $file_mime, $file_size, $file){
+    //Shuffle related / upload/download/copy files------------
+    public function uploadFile($container_storage_id, $storage_account, $file_name, $file_mime, $file_size, $file){
         //we can use the put upload directly, however we should still add a directory first, because we want the file name not to be changed.
-        $upload_url = $this->createFolder($storage_account, (new DateTime("now"))->format('Y-m-d_H_i_s'));
+        //$upload_url = $this->createFolder($storage_account, (new DateTime("now"))->format('Y-m-d_H_i_s'));
+        $upload_url = 'https://apis.live.net/v5.0/'.$container_storage_id.'/files';
         //upload put request
         //PUT https://apis.live.net/v5.0/me/skydrive/files/HelloWorld.txt?access_token=ACCESS_TOKEN
         //
@@ -350,7 +346,7 @@ class OneDriveModel extends CI_Model
         }
         rewind($file);
         */
-        curl_setopt($ch, CURLOPT_URL, $upload_url.$file_name.'?access_token='.$this->getAccessToken($storage_account));
+        curl_setopt($ch, CURLOPT_URL, $upload_url.'/'.$file_name.'?access_token='.$this->getAccessToken($storage_account));
         curl_setopt($ch, CURLOPT_PUT, true);
         curl_setopt($ch, CURLOPT_INFILE, $file);
         curl_setopt($ch, CURLOPT_INFILESIZE, $file_size);//if this causes a block, it might be because there was an error for the previous call to onedrive api for $file
@@ -440,30 +436,30 @@ class OneDriveModel extends CI_Model
         );
     }
     //create document related
-    public function createDocument($storage_account, $name){
+    public function createDocument($container_storage_id, $storage_account, $name){
         $doc_path = $this->config->item('document_file_path');
         $file = fopen($doc_path, 'r');
         $file_size = filesize($doc_path);
         $file_mime = $this->config->item('document_file_mime');
-        $id = $this->uploadFile($storage_account, $name, $file_mime, $file_size, $file, true);
+        $id = $this->uploadFile($container_storage_id, $storage_account, $name, $file_mime, $file_size, $file, true);
         fclose($file);
         return $id;
     }
-    public function createSpreadSheet($storage_account, $name){
+    public function createSpreadSheet($container_storage_id, $storage_account, $name){
         $doc_path = $this->config->item('spreadsheet_file_path');
         $file = fopen($doc_path, 'r');
         $file_size = filesize($doc_path);
         $file_mime = $this->config->item('spreadsheet_file_mime');
-        $id = $this->uploadFile($storage_account, $name, $file_mime, $file_size, $file, true);
+        $id = $this->uploadFile($container_storage_id, $storage_account, $name, $file_mime, $file_size, $file, true);
         fclose($file);
         return $id;
     }
-    public function createPresentation($storage_account, $name){
+    public function createPresentation($container_storage_id, $storage_account, $name){
         $doc_path = $this->config->item('presentation_file_path');
         $file = fopen($doc_path, 'r');
         $file_size = filesize($doc_path);
         $file_mime = $this->config->item('presentation_file_mime');
-        $id = $this->uploadFile($storage_account, $name, $file_mime, $file_size, $file, true);
+        $id = $this->uploadFile($container_storage_id, $storage_account, $name, $file_mime, $file_size, $file, true);
         fclose($file);
         return $id;
     }

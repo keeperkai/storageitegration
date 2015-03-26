@@ -86,7 +86,8 @@ class ShuffleJobModel extends CI_Model
 				'storage_file_size'=>$bend-$bstart+1,
 				'storage_id'=>$chunkjob['uploaded_storage_id']
 			);
-            $this->fileModel->registerStorageFileAndSetPermissionsOnStorage($storage_file_data);
+            //$this->fileModel->registerStorageFileAndSetPermissionsOnStorage($storage_file_data);
+            $this->fileModel->registerStoragefile($storage_file_data);
         }
         //delete old file from cloud storage and delete old storage file data in our system
 		$this->fileModel->deleteStorageFile($old_sfile['storage_file_id']);
@@ -304,7 +305,7 @@ class ShuffleJobModel extends CI_Model
             //upload the target file
             rewind($target_fp);
             $s2 = microtime(true)*1000;
-            $storage_id = $this->cloudStorageModel->uploadFile($chunkjob['target_account'], $source_file['name'], $source_file['mime_type'], $total_length, $target_fp);
+            $storage_id = $this->cloudStorageModel->uploadFile($chunkjob['container_storage_id'], $chunkjob['target_account'], $source_file['name'], $source_file['mime_type'], $total_length, $target_fp);
             $times[$chunkjob['target_account']['token_type']]['upload'] += microtime(true)*1000 - $s2;
             //register chunk job completed and update the uploaded storage id
             $this->registerChunkJobCompleted($chunkjob['chunk_job_id'], $storage_id);
@@ -373,7 +374,7 @@ class ShuffleJobModel extends CI_Model
                 //echo 'source downloaded, uploading file    ';
                 //upload the file as a new storage file
                 $s = microtime(true)*1000;
-                $storage_id = $this->cloudStorageModel->uploadFile($target_account, $source_file['name'], $source_file['mime_type'], $size_of_chunk, $source);
+                $storage_id = $this->cloudStorageModel->uploadFile($chunkjob['$container_storage_id'], $target_account, $source_file['name'], $source_file['mime_type'], $size_of_chunk, $source);
                 $times[$target_account['token_type']]['upload'] += microtime(true)*1000 - $s;
                 //echo 'uploaded    ';
                 //register chunk job completed
@@ -394,7 +395,7 @@ class ShuffleJobModel extends CI_Model
         $source_account = $movejob['source_account'];
         $source_file = $movejob['source_file'];
         $target_account = $movejob['chunk_job'][0]['target_account'];
-        $storage_id = $this->cloudStorageModel->apiCopyFile($source_file['storage_id'], $source_account, $target_account);
+        $storage_id = $this->cloudStorageModel->apiCopyFile($movejob['chunk_job'][0]['container_storage_id'], $source_file['storage_id'], $source_account, $target_account);
         $this->registerChunkJobCompleted($movejob['chunk_job'][0]['chunk_job_id'], $storage_id);
         //new flow don't register move job
         //$this->registerMoveJobCompleted($movejob['move_job_id']);
